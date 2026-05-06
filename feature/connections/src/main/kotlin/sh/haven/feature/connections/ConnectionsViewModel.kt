@@ -2919,6 +2919,12 @@ class ConnectionsViewModel @Inject constructor(
             }
 
             val client = SshClient()
+            // The deploy connection has to honour the profile's "Route through"
+            // jump host, WireGuard tunnel, or legacy SOCKS/HTTP proxy — same
+            // precedence the regular connect path uses (#143). If we
+            // auto-create a jump session here we tear it down on failure to
+            // avoid leaving an orphan jump connection behind.
+            var autoCreatedJumpSessionId: String? = null
             try {
                 val config = ConnectionConfig(
                     host = profile.host,
@@ -2926,8 +2932,13 @@ class ConnectionsViewModel @Inject constructor(
                     username = profile.username,
                     authMethod = ConnectionConfig.AuthMethod.Password(password),
                 )
+                val proxy = withContext(Dispatchers.IO) {
+                    resolveDeployProxy(profile, password) { autoCreated ->
+                        autoCreatedJumpSessionId = autoCreated
+                    }
+                }
                 try {
-                    val hostKeyEntry = client.connect(config)
+                    val hostKeyEntry = client.connect(config, proxy = proxy)
                     runTofuVerification(hostKeyEntry, clientToDisconnectOnReject = client)
                 } catch (e: HostKeyAuthFailure) {
                     runTofuVerification(e.hostKey, clientToDisconnectOnReject = null)
@@ -2947,10 +2958,40 @@ class ConnectionsViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 _error.value = "Deploy failed: ${e.message ?: "unknown error"}"
+                autoCreatedJumpSessionId?.let { sshSessionManager.removeSession(it) }
             } finally {
                 client.disconnect()
             }
         }
+    }
+
+    /**
+     * Build the proxy chain a deploy / probe connect should use to honour
+     * the profile's "Route through" setting. Same precedence as the live
+     * connect path: jump host > WireGuard tunnel > legacy SOCKS/HTTP proxy.
+     * Reuses an existing connected jump session when one is open, otherwise
+     * stands up a new one and reports its session id via [onAutoCreatedJump]
+     * so the caller can tear it down if the dependent operation fails.
+     */
+    private suspend fun resolveDeployProxy(
+        profile: ConnectionProfile,
+        password: String,
+        onAutoCreatedJump: (String) -> Unit,
+    ): Proxy? {
+        val jumpProfileId = profile.jumpProfileId
+        if (jumpProfileId != null) {
+            val (jumpSessionId, reused) = connectJumpHost(jumpProfileId, password)
+            if (!reused) onAutoCreatedJump(jumpSessionId)
+            return sshSessionManager.createProxyJump(jumpSessionId)
+                ?: throw Exception("Jump host session not usable for tunneling")
+        }
+        val tunnelId = profile.tunnelConfigId
+        if (tunnelId != null) {
+            val tunnel = tunnelManager.getTunnel(tunnelId)
+                ?: throw Exception("Tunnel config $tunnelId not found")
+            return sh.haven.core.tunnel.TunnelProxy(tunnel)
+        }
+        return createNetworkProxy(profile)
     }
 
     private fun startForegroundServiceIfNeeded() {

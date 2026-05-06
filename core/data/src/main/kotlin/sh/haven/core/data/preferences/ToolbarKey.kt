@@ -11,6 +11,7 @@ enum class ToolbarKey(val id: String, val label: String, val isModifier: Boolean
     TAB_KEY("tab", "Tab", isAction = true),
     PASTE("paste", "Paste", isAction = true),
     SNIPPETS("snippets", "Snippets", isAction = true),
+    ATTACH("attach", "Attach", isAction = true),
     VOICE_KEYBOARD("voice_kb", "Voice", isAction = true),
     RAW_KEYBOARD("raw_kb", "Raw", isAction = true),
     SHIFT("shift", "Shift", isModifier = true),
@@ -90,12 +91,14 @@ enum class ToolbarKey(val id: String, val label: String, val isModifier: Boolean
 
         /** Default row 1: keyboard toggle, function keys, nav block top. */
         val DEFAULT_ROW1 = listOf(
-            SNIPPETS, KEYBOARD, ESC_KEY, TAB_KEY, PASTE, SYM_SLASH, HOME, ARROW_UP, END, PGUP,
+            SNIPPETS, KEYBOARD, ATTACH, ESC_KEY, TAB_KEY, PASTE, SYM_SLASH, HOME, ARROW_UP, END, PGUP,
         )
 
-        /** Default row 2: modifiers, nav block bottom, symbols. */
+        /** Default row 2: modifiers, nav block bottom, symbols. The
+         *  Voice/secure-keyboard toggle sits at column index 2 so it
+         *  stacks under the Attach key in row 1. */
         val DEFAULT_ROW2 = listOf(
-            SHIFT, CTRL, ALT, ARROW_LEFT, ARROW_DOWN, ARROW_RIGHT, PGDN,
+            SHIFT, CTRL, VOICE_KEYBOARD, ALT, ARROW_LEFT, ARROW_DOWN, ARROW_RIGHT, PGDN,
             SYM_PIPE, SYM_TILDE, SYM_SLASH, SYM_BACKSLASH, SYM_BACKTICK,
         )
 

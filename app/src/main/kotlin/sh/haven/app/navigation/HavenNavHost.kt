@@ -400,6 +400,11 @@ fun HavenNavHost(
                                 pagerState.animateScrollToPage(pageOf(Screen.Settings))
                             }
                         },
+                        onNavigateToSftp = {
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(pageOf(Screen.Sftp))
+                            }
+                        },
                         terminalModifier = Modifier.pagerSwipeOverride(
                             pagerState, coroutineScope,
                             isSelectionActive = { terminalSelectionActive || terminalReorderMode },
@@ -470,6 +475,15 @@ fun HavenNavHost(
                         onEditorOpenChanged = { sftpEditorOpen = it },
                         onImageToolOpenChanged = { sftpImageToolOpen = it },
                         sftpModifier = sftpModifier,
+                        onAttachFinished = {
+                            // Once the picker resolves (confirm or cancel)
+                            // bring the user back to the Terminal page so the
+                            // shell-quoted path lands at their cursor where
+                            // they can see it.
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(pageOf(Screen.Terminal))
+                            }
+                        },
                         viewModel = sftpViewModel,
                     )
                     LaunchedEffect(pendingSmbProfileId) {

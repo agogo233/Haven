@@ -40,6 +40,10 @@ dependencies {
     implementation(project(":core:et"))
     implementation(project(":core:local"))
     implementation(project(":core:security"))
+    // The terminal's paperclip / attach feature reuses the SFTP feature's
+    // upload pipeline (TerminalAttachCoordinator) — depending on the SFTP
+    // module is therefore intentional, not a layering accident.
+    implementation(project(":feature:sftp"))
 
     implementation(libs.termlib)
 

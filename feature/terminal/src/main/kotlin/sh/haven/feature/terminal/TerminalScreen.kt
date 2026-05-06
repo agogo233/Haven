@@ -165,6 +165,12 @@ fun TerminalScreen(
     onReorderModeChanged: (Boolean) -> Unit = {},
     onToolbarLayoutChanged: (ToolbarLayout) -> Unit = {},
     onOpenToolbarSettings: () -> Unit = {},
+    /**
+     * Switch to the SFTP page — fired by the attach (paperclip) flow so
+     * the user lands on the folder picker. The host (HavenNavHost) drives
+     * the pager animation; this screen just signals intent.
+     */
+    onNavigateToSftp: () -> Unit = {},
     viewModel: TerminalViewModel = hiltViewModel(),
 ) {
     var reorderMode by remember { mutableStateOf(false) }
@@ -223,6 +229,27 @@ fun TerminalScreen(
             android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show()
             viewModel.dismissNewTabMessage()
         }
+    }
+
+    // Paperclip / attach flow: SAF picker → coordinator (the SFTP screen
+    // renders the folder picker) → upload → inject the shell-quoted
+    // path/URL at the cursor. The runAttachFlow launches on the VM scope
+    // so it survives the screen leaving composition while the user
+    // navigates the picker.
+    val attachLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val activeProfileId = viewModel.tabs.value
+            .getOrNull(viewModel.activeTabIndex.value)?.profileId
+        val (fileName, fileSize) = viewModel.attachCoordinator.queryFileInfo(uri)
+        onNavigateToSftp()
+        viewModel.runAttachFlow(
+            sourceUri = uri,
+            fileName = fileName,
+            fileSize = fileSize,
+            initialProfileId = activeProfileId,
+        )
     }
 
     // Resolve the terminal typeface: user-supplied font path wins
@@ -926,6 +953,7 @@ fun TerminalScreen(
                         onToggleStandardKeyboard = onToggleStandardKeyboard,
                         rawKeyboardMode = rawKeyboardMode,
                         onToggleRawKeyboard = onToggleRawKeyboard,
+                        onAttachTap = { attachLauncher.launch(arrayOf("*/*")) },
                         selectionContent = selectionController?.let { ctrl -> {
                             SelectionToolbarContent(
                                 controller = ctrl,

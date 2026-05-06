@@ -147,6 +147,13 @@ fun SftpScreen(
      * competing layers.
      */
     sftpModifier: Modifier = Modifier,
+    /**
+     * Fired after the user resolves a pending terminal-attach folder pick
+     * (either confirm or cancel). The host uses it to scroll back to the
+     * Terminal page so the user lands where the path will be injected
+     * instead of being stranded on the SFTP screen.
+     */
+    onAttachFinished: () -> Unit = {},
     viewModel: SftpViewModel = hiltViewModel(),
 ) {
     val connectedProfiles by viewModel.connectedProfiles.collectAsState()
@@ -206,6 +213,9 @@ fun SftpScreen(
 
     val selectedPaths by viewModel.selectedPaths.collectAsState()
     val selectionMode by viewModel.selectionMode.collectAsState()
+    val attachRequest by viewModel.attachRequest.collectAsState()
+    val attachProgress by viewModel.attachProgress.collectAsState()
+    val attachActive = attachRequest != null
     val chmodRequest by viewModel.chmodRequest.collectAsState()
     val chownRequest by viewModel.chownRequest.collectAsState()
 
@@ -381,6 +391,28 @@ fun SftpScreen(
     // navigating up / exiting the screen.
     androidx.activity.compose.BackHandler(enabled = selectionMode) {
         viewModel.clearSelection()
+    }
+
+    // Back press while a terminal-attach folder pick is pending cancels
+    // it (resolving the coordinator's deferred with null) so the terminal
+    // unblocks instead of leaving the picker active across navigation.
+    androidx.activity.compose.BackHandler(enabled = attachActive) {
+        viewModel.cancelAttach()
+        onAttachFinished()
+    }
+
+    // When the picker opens, pre-select the terminal's active SSH session's
+    // profile so the user lands in the right host's filesystem instead of
+    // wherever they last browsed. Keyed on the request reference so a
+    // subsequent attach with the same initialProfileId re-triggers; manual
+    // profile switches mid-pick aren't fought because the key doesn't
+    // change while one request is active.
+    LaunchedEffect(attachRequest) {
+        val req = attachRequest ?: return@LaunchedEffect
+        val initialId = req.initialProfileId ?: return@LaunchedEffect
+        if (activeProfileId != initialId) {
+            viewModel.selectProfile(initialId)
+        }
     }
 
     Scaffold(
@@ -608,6 +640,80 @@ fun SftpScreen(
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
+            // Folder-pick banner — visible while the terminal's attach
+            // flow is awaiting a destination choice. The user navigates
+            // freely (including switching profiles / rclone remotes) and
+            // taps "Use this folder" once happy, or backs out via Cancel.
+            attachRequest?.let { req ->
+                // The "local" pseudo-profile is the device's own filesystem;
+                // letting the user "upload" to it would just copy a file the
+                // app already has on-device, so it's not a valid attach
+                // destination. Block confirm and explain on the banner.
+                val isLocalDest = activeProfileId == "local"
+                val canConfirm = activeProfileId != null && !isLocalDest
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                ) {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        Text(
+                            text = "Choose folder for ${req.fileName}",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                        )
+                        Text(
+                            text = when {
+                                activeProfileId == null -> "Pick a connected profile to use"
+                                isLocalDest -> "Pick a remote profile — local can't accept uploads"
+                                else -> "Will upload into: $currentPath"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                        ) {
+                            TextButton(onClick = {
+                                viewModel.cancelAttach()
+                                onAttachFinished()
+                            }) {
+                                Text(stringResource(R.string.common_cancel))
+                            }
+                            Spacer(Modifier.width(4.dp))
+                            Button(
+                                onClick = {
+                                    viewModel.confirmAttachFolder()
+                                    onAttachFinished()
+                                },
+                                enabled = canConfirm,
+                            ) {
+                                Text("Use this folder")
+                            }
+                        }
+                    }
+                }
+            }
+            attachProgress?.let { p ->
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    if (p.totalBytes > 0) {
+                        LinearProgressIndicator(
+                            progress = { p.transferredBytes.toFloat() / p.totalBytes.toFloat() },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    } else {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+                    Text(
+                        "Sending ${p.fileName}…",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                    )
+                }
+            }
             AnimatedVisibility(visible = showFilterBar && activeProfileId != null) {
                 Row(
                     modifier = Modifier
@@ -973,6 +1079,11 @@ fun SftpScreen(
                                 onTap = {
                                     if (selectionMode) {
                                         viewModel.toggleSelection(entry)
+                                    } else if (attachActive) {
+                                        // Attach picker mode: only folder-navigation taps do
+                                        // anything; file taps are no-op so the user can't
+                                        // accidentally trigger a download / preview / play.
+                                        if (entry.isDirectory) viewModel.navigateTo(entry.path)
                                     } else if (entry.isDirectory) {
                                         viewModel.navigateTo(entry.path)
                                     } else if (sh.haven.feature.editor.TextMateSupport.scopeForFileName(entry.name) != null) {

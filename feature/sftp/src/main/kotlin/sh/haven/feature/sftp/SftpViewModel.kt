@@ -155,8 +155,40 @@ class SftpViewModel @Inject constructor(
     private val sftpStreamServer: SftpStreamServer,
     private val pasteQueueDao: sh.haven.core.data.db.PasteQueueDao,
     private val agentUiCommandBus: sh.haven.core.data.agent.AgentUiCommandBus,
+    private val attachCoordinator: sh.haven.feature.sftp.attach.TerminalAttachCoordinator,
     @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
+
+    /**
+     * Re-exposes [TerminalAttachCoordinator.pendingRequest] so the screen
+     * can switch into folder-pick mode while the terminal awaits a
+     * destination choice.
+     */
+    val attachRequest: StateFlow<sh.haven.feature.sftp.attach.TerminalAttachCoordinator.AttachRequest?> =
+        attachCoordinator.pendingRequest
+
+    val attachProgress: StateFlow<sh.haven.feature.sftp.attach.TerminalAttachCoordinator.Progress?> =
+        attachCoordinator.progress
+
+    /**
+     * "Use this folder" — confirms the current path on the active profile
+     * as the attach destination. Reads transport flags directly so the
+     * coordinator gets the rclone remote name when relevant.
+     */
+    fun confirmAttachFolder() {
+        val profileId = _activeProfileId.value ?: return
+        attachCoordinator.confirmFolder(
+            profileId = profileId,
+            isRclone = _isRcloneProfile.value,
+            rcloneRemote = activeRcloneRemote,
+            folderPath = _currentPath.value,
+        )
+    }
+
+    /** Cancel the pending attach request — completes the deferred with null. */
+    fun cancelAttach() {
+        attachCoordinator.cancel()
+    }
 
     init {
         // Subscribe to agent-driven UI commands so an MCP-issued navigation

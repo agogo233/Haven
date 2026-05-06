@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Lock
@@ -167,6 +168,12 @@ data class ToolbarCallbacks(
     val rawKeyboardMode: Boolean = false,
     /** Flip [rawKeyboardMode]. */
     val onToggleRawKeyboard: () -> Unit = {},
+    /**
+     * Tap on the paperclip / attach key. Opens the source picker (SAF) so the
+     * user can send a local file into the active session and inject a usable
+     * reference (path or share URL) at the cursor.
+     */
+    val onAttachTap: () -> Unit = {},
 )
 
 val LocalToolbarCallbacks = compositionLocalOf<ToolbarCallbacks> {
@@ -201,6 +208,7 @@ fun KeyboardToolbar(
     onToggleStandardKeyboard: () -> Unit = {},
     rawKeyboardMode: Boolean = false,
     onToggleRawKeyboard: () -> Unit = {},
+    onAttachTap: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var shiftActive by remember { mutableStateOf(false) }
@@ -268,6 +276,7 @@ fun KeyboardToolbar(
             val newRows = layout.rows.map { row -> row.filter { it != snippet } }
             onToolbarLayoutChanged(ToolbarLayout(newRows))
         },
+        onAttachTap = onAttachTap,
     )
 
     CompositionLocalProvider(LocalToolbarCallbacks provides callbacks) {
@@ -759,6 +768,11 @@ private fun BuiltInKey(
                 )
             }
         }
+        ToolbarKey.ATTACH -> ToolbarIconButton(
+            icon = Icons.Filled.AttachFile,
+            description = "Attach file to send to remote",
+            onClick = cb.onAttachTap,
+        )
         ToolbarKey.SHIFT -> ToolbarToggleButton("Shift", shiftActive, onClick = cb.onToggleShift)
         ToolbarKey.CTRL -> ToolbarToggleButton("Ctrl", ctrlActive, onClick = cb.onToggleCtrl)
         ToolbarKey.ALT -> ToolbarToggleButton("Alt", altActive, onClick = cb.onToggleAlt)
@@ -984,10 +998,10 @@ private fun ToolbarToggleButton(label: String, active: Boolean, onClick: () -> U
 }
 
 /**
- * Icon-based toggle button. Same shape as [ToolbarToggleButton] but uses an
- * ImageVector instead of a text label. Used for keys where an icon conveys
- * the on/off state more clearly than a word — e.g. the Secure-keyboard
- * toggle's padlock open/closed (#115 follow-up).
+ * Icon-based toggle button. Bare icon (no surrounding pill) so it sits
+ * flush with the other icon-only keys like Attach (#115 follow-up). The
+ * on/off state is communicated via tint: primary when active, the usual
+ * onSurfaceVariant when inactive.
  */
 @Composable
 private fun ToolbarIconToggleButton(
@@ -996,25 +1010,19 @@ private fun ToolbarIconToggleButton(
     active: Boolean,
     onClick: () -> Unit,
 ) {
-    FilledTonalButton(
+    IconButton(
         onClick = onClick,
-        modifier = Modifier
-            .padding(horizontal = 1.dp)
-            .height(32.dp),
-        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-        colors = if (active) {
-            ButtonDefaults.filledTonalButtonColors(
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-            )
-        } else {
-            ButtonDefaults.filledTonalButtonColors()
-        },
+        modifier = Modifier.size(32.dp),
     ) {
         Icon(
             imageVector = icon,
             contentDescription = contentDescription,
             modifier = Modifier.size(18.dp),
+            tint = if (active) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
         )
     }
 }

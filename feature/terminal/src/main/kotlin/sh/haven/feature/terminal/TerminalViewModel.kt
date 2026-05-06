@@ -267,7 +267,39 @@ class TerminalViewModel @Inject constructor(
     private val preferencesRepository: UserPreferencesRepository,
     private val connectionRepository: sh.haven.core.data.repository.ConnectionRepository,
     private val agentUiCommandBus: sh.haven.core.data.agent.AgentUiCommandBus,
+    /**
+     * Coordinator for the paperclip "attach" flow — see
+     * [sh.haven.feature.sftp.attach.TerminalAttachCoordinator]. Singleton-
+     * scoped, shared with [sh.haven.feature.sftp.SftpViewModel] so the
+     * SFTP screen renders the folder picker while this VM awaits the
+     * destination choice.
+     */
+    val attachCoordinator: sh.haven.feature.sftp.attach.TerminalAttachCoordinator,
 ) : ViewModel() {
+
+    /**
+     * Run the paperclip flow on this VM's scope so it survives the screen
+     * leaving composition while the user navigates the SFTP picker. On
+     * success the returned (already shell-quoted) payload is fed to the
+     * active tab's stdin so it lands at the cursor in the live shell.
+     */
+    fun runAttachFlow(
+        sourceUri: android.net.Uri,
+        fileName: String,
+        fileSize: Long,
+        initialProfileId: String?,
+    ) {
+        viewModelScope.launch {
+            val payload = attachCoordinator.attach(
+                sourceUri = sourceUri,
+                fileName = fileName,
+                fileSize = fileSize,
+                initialProfileId = initialProfileId,
+            ) ?: return@launch
+            val tab = _tabs.value.getOrNull(_activeTabIndex.value) ?: return@launch
+            tab.sendInput(payload.toByteArray())
+        }
+    }
 
     init {
         // Cross-tab agent verbs: focus an existing tab (focus_terminal_session)
