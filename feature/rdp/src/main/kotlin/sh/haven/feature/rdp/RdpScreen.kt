@@ -824,14 +824,13 @@ private fun RdpViewer(
                 Spacer(Modifier.weight(1f))
 
                 if (zoom != 1f || panX != 0f || panY != 0f) {
-                    Button(onClick = {
+                    IconButton(onClick = {
                         zoom = 1f
                         panX = 0f
                         panY = 0f
                     }) {
-                        Text("Reset Zoom")
+                        Icon(Icons.Default.FitScreen, contentDescription = "Reset zoom")
                     }
-                    Spacer(Modifier.width(8.dp))
                 }
 
                 IconButton(onClick = onToggleFullscreen) {
