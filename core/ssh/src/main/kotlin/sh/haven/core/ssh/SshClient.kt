@@ -58,6 +58,7 @@ class SshClient : Closeable {
         connectTimeoutMs: Int = 10_000,
         proxy: Proxy? = null,
         keyboardInteractivePrompter: KeyboardInteractivePrompter? = null,
+        preConnect: (suspend () -> Unit)? = null,
     ): KnownHostEntry = withContext(Dispatchers.IO) {
         disconnect()
         verboseLogger?.let { jsch.setInstanceLogger(it) }
@@ -130,6 +131,11 @@ class SshClient : Closeable {
 
         // Apply user SSH options (overrides defaults above)
         config.sshOptions.forEach { (key, value) -> sess.setConfig(key, value) }
+
+        // Port-knock hook (when configured): runs after socket params are set
+        // but before JSch opens the TCP connection. Throwing here aborts the
+        // connect cleanly without leaving a half-built session behind.
+        preConnect?.invoke()
 
         try {
             sess.connect(connectTimeoutMs)
@@ -234,6 +240,7 @@ class SshClient : Closeable {
         connectTimeoutMs: Int = 10_000,
         proxy: Proxy? = null,
         keyboardInteractivePrompter: KeyboardInteractivePrompter? = null,
+        preConnect: (() -> Unit)? = null,
     ): KnownHostEntry {
         disconnect()
         verboseLogger?.let { jsch.setInstanceLogger(it) }
@@ -292,6 +299,9 @@ class SshClient : Closeable {
         }
 
         config.sshOptions.forEach { (key, value) -> sess.setConfig(key, value) }
+
+        // See [connect] for the rationale on hook placement.
+        preConnect?.invoke()
 
         try {
             sess.connect(connectTimeoutMs)

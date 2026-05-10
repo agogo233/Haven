@@ -1,13 +1,12 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
 }
 
 android {
-    namespace = "sh.haven.feature.vnc"
+    namespace = "sh.haven.core.knock"
     compileSdk = 36
 
     defaultConfig {
@@ -19,24 +18,19 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    buildFeatures {
-        compose = true
+    testOptions {
+        unitTests.isReturnDefaultValues = true
     }
 }
 
 dependencies {
-    implementation(project(":core:ui"))
-    implementation(project(":core:vnc"))
-    implementation(project(":core:knock"))
-    implementation(project(":core:ssh"))
-    implementation(project(":core:mosh"))
-    implementation(project(":core:et"))
-    implementation(project(":core:data"))
-
+    implementation(libs.coroutines.core)
+    implementation(libs.coroutines.android)
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
-    implementation(libs.hilt.navigation.compose)
-    implementation(libs.lifecycle.viewmodel)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.coroutines.test)
 }
 
 kotlin {

@@ -86,6 +86,7 @@ include(":core:ssh")
 include(":core:security")
 include(":core:data")
 include(":core:tunnel")
+include(":core:knock")
 include(":core:stepca")
 
 include(":feature:connections")

@@ -132,6 +132,7 @@ dependencies {
     implementation(libs.termlib)
     implementation(project(":core:stepca"))
     implementation(project(":core:tunnel"))
+    implementation(project(":core:knock"))
 
     implementation(project(":feature:connections"))
     implementation(project(":feature:terminal"))

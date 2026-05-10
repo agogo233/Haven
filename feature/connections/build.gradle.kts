@@ -33,6 +33,7 @@ dependencies {
     implementation(project(":core:ui"))
     implementation(project(":core:ssh"))
     implementation(project(":core:tunnel"))
+    implementation(project(":core:knock"))
     implementation(project(":feature:tunnel"))
     implementation(project(":core:reticulum"))
     implementation(project(":core:mosh"))

@@ -437,6 +437,9 @@ fun ConnectionsScreen(
             onScanReticulum = { host, port, netName, passphrase ->
                 viewModel.scanReticulumDestinations(host, port, netName, passphrase)
             },
+            onTestKnock = { host, sequence, delayMs ->
+                viewModel.testKnock(host, sequence, delayMs)
+            },
             onDismiss = { showAddDialog = false },
             onSave = { profile ->
                 viewModel.saveConnection(profile)
@@ -536,6 +539,9 @@ fun ConnectionsScreen(
             onScanSubnetSmb = { viewModel.scanSubnetSmb() },
             onScanReticulum = { host, port, netName, passphrase ->
                 viewModel.scanReticulumDestinations(host, port, netName, passphrase)
+            },
+            onTestKnock = { host, sequence, delayMs ->
+                viewModel.testKnock(host, sequence, delayMs)
             },
             onDismiss = { editingProfileId = null },
             onSave = { updated ->

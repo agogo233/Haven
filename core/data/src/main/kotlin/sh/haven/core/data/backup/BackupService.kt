@@ -121,6 +121,8 @@ class BackupService @Inject constructor(
                 put("fileTransport", p.fileTransport)
                 put("tunnelConfigId", p.tunnelConfigId ?: JSONObject.NULL)
                 put("terminalColorScheme", p.terminalColorScheme ?: JSONObject.NULL)
+                put("portKnockSequence", p.portKnockSequence ?: JSONObject.NULL)
+                put("portKnockDelayMs", p.portKnockDelayMs)
             })
         }
         json.put("connections", connections)
@@ -375,6 +377,8 @@ class BackupService @Inject constructor(
                             fileTransport = c.optString("fileTransport", "AUTO"),
                             tunnelConfigId = c.optStringOrNull("tunnelConfigId"),
                             terminalColorScheme = c.optStringOrNull("terminalColorScheme"),
+                            portKnockSequence = c.optStringOrNull("portKnockSequence"),
+                            portKnockDelayMs = c.optInt("portKnockDelayMs", 100),
                         ),
                     )
                     count++

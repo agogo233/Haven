@@ -174,6 +174,21 @@ data class ConnectionProfile(
      * VNC/RDP/SMB/RCLONE/RETICULUM/LOCAL.
      */
     val tunnelOnly: Boolean = false,
+    /**
+     * Optional port-knock sequence sent before the real socket open.
+     * Format: whitespace- or comma-separated `port[/proto]` tokens, e.g.
+     * `"7000 8000 9000"` (all TCP) or `"7000/tcp 8000/udp 9000/tcp"`.
+     * Empty / null = knocking disabled. Parsed by `KnockSequence.parse`.
+     * Only meaningful for protocols with a remote TCP host (SSH, Mosh,
+     * ET, VNC, RDP, SMB) — ignored for LOCAL/RCLONE/RETICULUM.
+     */
+    val portKnockSequence: String? = null,
+    /**
+     * Delay between knock packets, in milliseconds. Matches `knockd`'s
+     * default `seq_timeout` window — too short and the firewall may
+     * mis-order the packets; too long and `seq_timeout` expires.
+     */
+    val portKnockDelayMs: Int = 100,
 ) {
     enum class AuthType {
         PASSWORD,

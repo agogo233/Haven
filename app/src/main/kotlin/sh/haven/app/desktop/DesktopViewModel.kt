@@ -20,6 +20,8 @@ import sh.haven.core.data.preferences.UserPreferencesRepository
 import sh.haven.core.data.repository.ConnectionLogRepository
 import sh.haven.core.data.repository.ConnectionRepository
 import sh.haven.core.et.EtSessionManager
+import sh.haven.core.knock.KnockSequence
+import sh.haven.core.knock.PortKnocker
 import sh.haven.core.mosh.MoshSessionManager
 import sh.haven.core.rdp.RdpSession
 import sh.haven.core.ssh.SshClient
@@ -54,6 +56,7 @@ class DesktopViewModel @Inject constructor(
     private val preferencesRepository: UserPreferencesRepository,
     private val connectionRepository: ConnectionRepository,
     private val tunnelResolver: TunnelResolver,
+    private val portKnocker: PortKnocker,
     private val agentUiCommandBus: sh.haven.core.data.agent.AgentUiCommandBus,
 ) : ViewModel() {
 
@@ -398,6 +401,13 @@ class DesktopViewModel @Inject constructor(
                 if (tc != null) {
                     client.start(TunneledSocket(tc, actualHost, actualPort), actualHost)
                 } else {
+                    // Knock only on the direct path. SSH-forward goes via
+                    // a localhost tunnel (handled at the SSH connect site)
+                    // and a userspace WG/Tailscale tunnel doesn't expose
+                    // raw kernel sockets for knockd to see.
+                    if (!sshForward && profileId != null) {
+                        runVncKnockIfConfigured(profileId, actualHost)
+                    }
                     client.start(actualHost, actualPort)
                 }
                 connected.value = true
@@ -551,6 +561,14 @@ class DesktopViewModel @Inject constructor(
                             connectionLogRepository.logEvent(profileId, ConnectionLog.Status.CONNECTED, verboseLog = startLog)
                         }
                     }
+                }
+
+                // Knock only on the direct path. SSH-forward goes via a
+                // localhost tunnel (knock happened at the SSH connect)
+                // and the SOCKS path runs through a userspace tunnel
+                // that knockd can't observe.
+                if (!sshForward && rdpSocksProxy == null && profileId != null) {
+                    runVncKnockIfConfigured(profileId, actualHost)
                 }
 
                 session.start()
@@ -758,6 +776,23 @@ class DesktopViewModel @Inject constructor(
             .filter { it.sshClient != null }
             .map { SshTunnelOption(it.sessionId, "${it.label} (ET)", it.profileId) }
         return ssh + mosh + et
+    }
+
+    /** Knock against the VNC/RDP host using the profile's saved sequence,
+     *  if any. Failures are logged but not thrown; the real socket open
+     *  surfaces the actual symptom. */
+    private suspend fun runVncKnockIfConfigured(profileId: String, host: String) {
+        val profile = connectionRepository.getById(profileId) ?: return
+        val seq = KnockSequence.parse(
+            profile.portKnockSequence,
+            delayMs = profile.portKnockDelayMs,
+        ).getOrNull() ?: return
+        val result = portKnocker.knock(host, seq)
+        Log.d(
+            TAG,
+            if (result.ok) "[knock] ${seq.format()} -> ok in ${result.totalDurationMs}ms"
+            else "[knock] ${seq.format()} -> failed after ${result.totalDurationMs}ms: ${result.error?.message}"
+        )
     }
 
     private fun findSshClient(sessionId: String): SshClient? {

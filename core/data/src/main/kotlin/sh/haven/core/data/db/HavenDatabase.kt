@@ -32,7 +32,7 @@ import sh.haven.core.data.db.entities.WorkspaceProfile
         WorkspaceItem::class,
         StepCaConfig::class,
     ],
-    version = 50,
+    version = 51,
     exportSchema = true,
 )
 abstract class HavenDatabase : RoomDatabase() {
@@ -742,6 +742,27 @@ abstract class HavenDatabase : RoomDatabase() {
                 addColumnIfMissing(
                     db, "connection_profiles", "tunnelOnly",
                     "INTEGER NOT NULL DEFAULT 0",
+                )
+            }
+        }
+
+        /**
+         * Per-profile port-knock sequence (#TBD). Two new columns on
+         * `connection_profiles`: an optional whitespace/comma-separated
+         * list of `port[/proto]` tokens, plus the inter-knock delay in
+         * ms (default 100). Empty/null sequence = knocking disabled,
+         * matching the existing behaviour for all profiles created before
+         * this migration.
+         */
+        val MIGRATION_50_51 = object : Migration(50, 51) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                addColumnIfMissing(
+                    db, "connection_profiles", "portKnockSequence",
+                    "TEXT DEFAULT NULL",
+                )
+                addColumnIfMissing(
+                    db, "connection_profiles", "portKnockDelayMs",
+                    "INTEGER NOT NULL DEFAULT 100",
                 )
             }
         }

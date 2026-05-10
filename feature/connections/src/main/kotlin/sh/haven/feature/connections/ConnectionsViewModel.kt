@@ -57,6 +57,9 @@ import sh.haven.core.rclone.RcloneSessionManager
 import sh.haven.core.reticulum.DiscoveredDestination
 import sh.haven.core.reticulum.ReticulumSessionManager
 import sh.haven.core.reticulum.ReticulumTransport
+import sh.haven.core.knock.KnockResult
+import sh.haven.core.knock.KnockSequence
+import sh.haven.core.knock.PortKnocker
 import sh.haven.core.smb.SmbSessionManager
 import sh.haven.core.stepca.CertRenewalGate
 import android.util.Log
@@ -100,6 +103,7 @@ class ConnectionsViewModel @Inject constructor(
     private val hostKeyVerifier: HostKeyVerifier,
     private val connectionLogRepository: ConnectionLogRepository,
     private val tunnelResolver: sh.haven.core.tunnel.TunnelResolver,
+    private val portKnocker: PortKnocker,
     private val tunnelConfigRepository: sh.haven.core.data.repository.TunnelConfigRepository,
     private val certRenewalGate: CertRenewalGate,
     private val agentUiCommandBus: sh.haven.core.data.agent.AgentUiCommandBus,
@@ -494,6 +498,11 @@ class ConnectionsViewModel @Inject constructor(
         val sshSessionId: String? = null,
         val profileId: String? = null,
         val colorDepth: String = "BPP_24_TRUE",
+        /** Optional knock sequence; honoured only on the direct path
+         *  (sshForward=false) since SSH-tunneled connects can't reach
+         *  the remote firewall from this device. */
+        val portKnockSequence: String? = null,
+        val portKnockDelayMs: Int = 100,
     )
     private val _navigateToVnc = MutableStateFlow<VncNavigation?>(null)
     val navigateToVnc: StateFlow<VncNavigation?> = _navigateToVnc.asStateFlow()
@@ -503,7 +512,7 @@ class ConnectionsViewModel @Inject constructor(
     val navigateToWayland: StateFlow<Boolean> = _navigateToWayland.asStateFlow()
 
     /** Emitted to navigate to RDP screen with connection params. */
-    data class RdpNavigation(val host: String, val port: Int, val username: String, val password: String, val domain: String, val sshForward: Boolean = false, val sshProfileId: String? = null, val sshSessionId: String? = null, val profileId: String? = null, val useNla: Boolean = true, val colorDepth: Int = 32)
+    data class RdpNavigation(val host: String, val port: Int, val username: String, val password: String, val domain: String, val sshForward: Boolean = false, val sshProfileId: String? = null, val sshSessionId: String? = null, val profileId: String? = null, val useNla: Boolean = true, val colorDepth: Int = 32, val portKnockSequence: String? = null, val portKnockDelayMs: Int = 100)
     private val _navigateToRdp = MutableStateFlow<RdpNavigation?>(null)
     val navigateToRdp: StateFlow<RdpNavigation?> = _navigateToRdp.asStateFlow()
 
@@ -785,6 +794,95 @@ class ConnectionsViewModel @Inject constructor(
      * VNC/RDP/SMB are excluded (they navigate to non-terminal screens).
      * SSH/Mosh/ET require a saved password or SSH keys.
      */
+    /**
+     * Build the pre-connect "knock" hook for a profile, or `null` if the
+     * profile has no knock sequence configured (or the saved sequence
+     * fails to parse — we keep that as a no-op rather than blocking the
+     * connect, since the parser already gates the save button and an
+     * unparseable string here means hand-edited / corrupted state).
+     *
+     * The returned suspend lambda fires the knock and writes a one-line
+     * summary into [verboseLogger] so the result shows up in the
+     * Connection Log entry. On knock failure it logs the error and
+     * returns normally — the real connect attempt is left to surface the
+     * actual symptom (timeout / connection refused / etc.). Aborting on
+     * knock failure would mask cases where the firewall already opened
+     * the port from a prior successful knock.
+     */
+    private fun buildKnockHook(
+        profile: ConnectionProfile,
+        verboseLogger: SshVerboseLogger?,
+    ): (suspend () -> Unit)? {
+        val sequence = KnockSequence.parse(
+            profile.portKnockSequence,
+            delayMs = profile.portKnockDelayMs,
+        ).getOrNull() ?: return null
+        return {
+            val result = portKnocker.knock(profile.host, sequence)
+            recordKnockResult(verboseLogger, sequence, result)
+        }
+    }
+
+    /** Synchronous variant for `connectBlocking` reconnect paths. */
+    private fun buildKnockHookBlocking(
+        profile: ConnectionProfile,
+        verboseLogger: SshVerboseLogger?,
+    ): (() -> Unit)? {
+        val sequence = KnockSequence.parse(
+            profile.portKnockSequence,
+            delayMs = profile.portKnockDelayMs,
+        ).getOrNull() ?: return null
+        return {
+            val result = kotlinx.coroutines.runBlocking {
+                portKnocker.knock(profile.host, sequence)
+            }
+            recordKnockResult(verboseLogger, sequence, result)
+        }
+    }
+
+    private fun recordKnockResult(
+        verboseLogger: SshVerboseLogger?,
+        sequence: KnockSequence,
+        result: KnockResult,
+    ) {
+        val line = if (result.ok) {
+            "[knock] ${sequence.format()} -> ok in ${result.totalDurationMs}ms"
+        } else {
+            "[knock] ${sequence.format()} -> failed after ${result.totalDurationMs}ms " +
+                "(sent ${result.sentSteps}/${sequence.steps.size}): ${result.error?.message}"
+        }
+        Log.d(TAG, line)
+        verboseLogger?.log(com.jcraft.jsch.Logger.INFO, line)
+    }
+
+    /**
+     * One-shot port-knock against [host] using a freshly-parsed [sequenceText].
+     * Used by the connection-edit dialog's "Test knock" button to verify
+     * the user's knockd config without committing the profile or
+     * attempting a real service connect.
+     *
+     * Returns `(ok, message)` for the UI to render. Never throws.
+     */
+    suspend fun testKnock(
+        host: String,
+        sequenceText: String,
+        delayMs: Int,
+    ): Pair<Boolean, String> {
+        val parsed = KnockSequence.parse(sequenceText, delayMs)
+        val seq = parsed.getOrElse {
+            return false to "Invalid sequence: ${it.message}"
+        } ?: return false to "Knock sequence is empty"
+        if (host.isBlank()) {
+            return false to "Host is blank"
+        }
+        val result = portKnocker.knock(host, seq)
+        return if (result.ok) {
+            true to "Sent ${result.sentSteps} knocks in ${result.totalDurationMs} ms"
+        } else {
+            false to "Failed after ${result.totalDurationMs} ms: ${result.error?.message ?: "unknown"}"
+        }
+    }
+
     private fun canAutoConnect(profile: ConnectionProfile, keys: List<SshKey>): Boolean = when {
         profile.isLocal -> true
         profile.isReticulum -> true
@@ -975,6 +1073,11 @@ class ConnectionsViewModel @Inject constructor(
                         sshSessionId = sshSessionId,
                         profileId = profile.id,
                         colorDepth = profile.vncColorDepth,
+                        // Knock not honoured on the SSH-forward path, but
+                        // pass it through so the field stays a single
+                        // source of truth at the call site.
+                        portKnockSequence = profile.portKnockSequence,
+                        portKnockDelayMs = profile.portKnockDelayMs,
                     )
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to connect SSH tunnel host for VNC", e)
@@ -989,6 +1092,8 @@ class ConnectionsViewModel @Inject constructor(
                     sshProfileId = profile.vncSshProfileId,
                     profileId = profile.id,
                     colorDepth = profile.vncColorDepth,
+                    portKnockSequence = profile.portKnockSequence,
+                    portKnockDelayMs = profile.portKnockDelayMs,
                 )
             }
         }
@@ -1019,6 +1124,8 @@ class ConnectionsViewModel @Inject constructor(
                         profileId = profile.id,
                         useNla = profile.rdpUseNla,
                         colorDepth = profile.rdpColorDepth,
+                        portKnockSequence = profile.portKnockSequence,
+                        portKnockDelayMs = profile.portKnockDelayMs,
                     )
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to connect SSH tunnel host for RDP", e)
@@ -1027,7 +1134,7 @@ class ConnectionsViewModel @Inject constructor(
                     _connectingProfileId.value = null
                 }
             } else {
-                _navigateToRdp.value = RdpNavigation(host, port, username, rdpPassword, domain, profile.rdpSshForward, profile.rdpSshProfileId, profileId = profile.id, useNla = profile.rdpUseNla, colorDepth = profile.rdpColorDepth)
+                _navigateToRdp.value = RdpNavigation(host, port, username, rdpPassword, domain, profile.rdpSshForward, profile.rdpSshProfileId, profileId = profile.id, useNla = profile.rdpUseNla, colorDepth = profile.rdpColorDepth, portKnockSequence = profile.portKnockSequence, portKnockDelayMs = profile.portKnockDelayMs)
             }
         }
     }
@@ -1070,6 +1177,15 @@ class ConnectionsViewModel @Inject constructor(
                     tunnelResolver.socketFactory(profile)
                 } else {
                     null
+                }
+
+                // Knock against the SMB host only when going direct. When
+                // tunneled via SSH RemoteForward the SMB server sees
+                // packets from the SSH host's IP, so a knock from the
+                // Android client wouldn't reach the right firewall —
+                // the SSH session is already gating access in that case.
+                if (sshClientCloseable == null) {
+                    buildKnockHook(profile, verboseLogger = null)?.invoke()
                 }
 
                 val sessionId = smbSessionManager.registerSession(profile.id, profile.label)
@@ -1483,6 +1599,7 @@ class ConnectionsViewModel @Inject constructor(
                             config,
                             proxy = proxy,
                             keyboardInteractivePrompter = keyboardInteractivePrompter,
+                            preConnect = buildKnockHook(profile, verboseLogger),
                         )
                         runTofuVerification(hostKeyEntry, clientToDisconnectOnReject = client)
                     } catch (e: HostKeyAuthFailure) {
@@ -1704,6 +1821,7 @@ class ConnectionsViewModel @Inject constructor(
                             config,
                             proxy = proxy,
                             keyboardInteractivePrompter = keyboardInteractivePrompter,
+                            preConnect = buildKnockHook(profile, verboseLogger),
                         )
                         runTofuVerification(hostKeyEntry, clientToDisconnectOnReject = sshClient)
                     } catch (e: HostKeyAuthFailure) {
@@ -1837,6 +1955,7 @@ class ConnectionsViewModel @Inject constructor(
                             config,
                             proxy = proxy,
                             keyboardInteractivePrompter = keyboardInteractivePrompter,
+                            preConnect = buildKnockHook(profile, verboseLogger),
                         )
                         runTofuVerification(hostKeyEntry, clientToDisconnectOnReject = sshClient)
                     } catch (e: HostKeyAuthFailure) {
@@ -1956,6 +2075,7 @@ class ConnectionsViewModel @Inject constructor(
                             connectBlocking(
                                 config,
                                 keyboardInteractivePrompter = keyboardInteractivePrompter,
+                                preConnect = buildKnockHookBlocking(profile, verboseLogger = null),
                             )
                         }
                     }
@@ -3039,7 +3159,11 @@ class ConnectionsViewModel @Inject constructor(
                     }
                 }
                 try {
-                    val hostKeyEntry = client.connect(config, proxy = proxy)
+                    val hostKeyEntry = client.connect(
+                        config,
+                        proxy = proxy,
+                        preConnect = buildKnockHook(profile, verboseLogger = null),
+                    )
                     runTofuVerification(hostKeyEntry, clientToDisconnectOnReject = client)
                 } catch (e: HostKeyAuthFailure) {
                     runTofuVerification(e.hostKey, clientToDisconnectOnReject = null)
@@ -3243,7 +3367,11 @@ class ConnectionsViewModel @Inject constructor(
                 } else {
                     tunnelResolver.jschProxy(profile)
                 }
-                val hostKeyEntry = client.connect(config, proxy = proxy)
+                val hostKeyEntry = client.connect(
+                    config,
+                    proxy = proxy,
+                    preConnect = buildKnockHook(profile, verboseLogger),
+                )
 
                 // Silent TOFU: accept new hosts, reject changed keys
                 when (val result = hostKeyVerifier.verify(hostKeyEntry)) {
@@ -3307,7 +3435,11 @@ class ConnectionsViewModel @Inject constructor(
                 } else {
                     tunnelResolver.jschProxy(profile)
                 }
-                val hostKeyEntry = sshClient.connect(config, proxy = proxy)
+                val hostKeyEntry = sshClient.connect(
+                    config,
+                    proxy = proxy,
+                    preConnect = buildKnockHook(profile, verboseLogger),
+                )
 
                 when (val result = hostKeyVerifier.verify(hostKeyEntry)) {
                     is HostKeyResult.Trusted -> {}
@@ -3360,7 +3492,11 @@ class ConnectionsViewModel @Inject constructor(
                 } else {
                     tunnelResolver.jschProxy(profile)
                 }
-                val hostKeyEntry = sshClient.connect(config, proxy = proxy)
+                val hostKeyEntry = sshClient.connect(
+                    config,
+                    proxy = proxy,
+                    preConnect = buildKnockHook(profile, verboseLogger),
+                )
 
                 when (val result = hostKeyVerifier.verify(hostKeyEntry)) {
                     is HostKeyResult.Trusted -> {}

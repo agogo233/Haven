@@ -53,6 +53,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -66,8 +67,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PlatformImeOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
+import kotlinx.coroutines.launch
 import sh.haven.core.data.db.entities.ConnectionProfile
 import sh.haven.core.data.preferences.UserPreferencesRepository
+import sh.haven.core.knock.KnockSequence
 
 /** Profile group colors — matches PROFILE_COLORS in ConnectionsScreen. */
 private val EDIT_DIALOG_COLORS = listOf(
@@ -100,6 +103,10 @@ fun ConnectionEditDialog(
     onScanSubnet: () -> Unit = {},
     onScanSubnetSmb: () -> Unit = {},
     onScanReticulum: (host: String, port: Int, networkName: String?, passphrase: String?) -> Unit = { _, _, _, _ -> },
+    /** Optional callback wired by the screen to fire a test knock and
+     *  return `(ok, message)`. When null the "Test knock" button is
+     *  hidden — useful for previews / tests. */
+    onTestKnock: (suspend (host: String, sequence: String, delayMs: Int) -> Pair<Boolean, String>)? = null,
     onDismiss: () -> Unit,
     onSave: (ConnectionProfile) -> Unit,
 ) {
@@ -220,6 +227,15 @@ fun ConnectionEditDialog(
         mutableStateOf(existing?.reconnectOnNetworkChange ?: true)
     }
     var tunnelOnly by rememberSaveable { mutableStateOf(existing?.tunnelOnly ?: false) }
+    // Port knocking — see core/knock module. Stored on ConnectionProfile,
+    // applied per-protocol at the transport layer (ConnectionsViewModel
+    // and DesktopViewModel). Honoured only on the direct-dial path.
+    var portKnockSequence by rememberSaveable {
+        mutableStateOf(existing?.portKnockSequence ?: "")
+    }
+    var portKnockDelayMs by rememberSaveable {
+        mutableStateOf((existing?.portKnockDelayMs ?: 100).toString())
+    }
 
     val isEdit = existing != null
     val title = if (isEdit) stringResource(R.string.connections_dialog_edit) else stringResource(R.string.connections_dialog_new)
@@ -2118,10 +2134,107 @@ fun ConnectionEditDialog(
                         )
                     }
                 }
+
+                // Port knocking. Visible for any profile with a remote
+                // TCP host — skipped for LOCAL (no host), RCLONE (its own
+                // protocol), and RETICULUM (mesh, not TCP).
+                if (connectionType !in setOf("LOCAL", "RCLONE", "RETICULUM")) {
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        "Port knocking",
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    val parsedKnock = KnockSequence.parse(
+                        portKnockSequence,
+                        portKnockDelayMs.toIntOrNull() ?: KnockSequence.DEFAULT_DELAY_MS,
+                    )
+                    val knockError = parsedKnock.exceptionOrNull()?.message
+                    OutlinedTextField(
+                        value = portKnockSequence,
+                        onValueChange = { portKnockSequence = it },
+                        label = { Text("Knock sequence (optional)") },
+                        placeholder = { Text("e.g. 7000 8000 9000 or 7000/tcp 8000/udp") },
+                        isError = knockError != null,
+                        supportingText = {
+                            if (knockError != null) {
+                                Text(knockError, color = MaterialTheme.colorScheme.error)
+                            } else if (portKnockSequence.isNotBlank()) {
+                                Text("Sent before each direct connect. Skipped on SSH/SOCKS-tunneled paths.")
+                            } else {
+                                Text("Leave blank to disable.")
+                            }
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    if (portKnockSequence.isNotBlank()) {
+                        Spacer(Modifier.height(4.dp))
+                        OutlinedTextField(
+                            value = portKnockDelayMs,
+                            onValueChange = { v ->
+                                portKnockDelayMs = v.filter { c -> c.isDigit() }.take(5)
+                            },
+                            label = { Text("Delay between knocks (ms)") },
+                            placeholder = { Text("100") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.width(200.dp),
+                        )
+                        if (onTestKnock != null) {
+                            val scope = rememberCoroutineScope()
+                            var testRunning by remember { mutableStateOf(false) }
+                            var testResult by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
+                            Spacer(Modifier.height(4.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                TextButton(
+                                    enabled = !testRunning && knockError == null && host.isNotBlank(),
+                                    onClick = {
+                                        testRunning = true
+                                        testResult = null
+                                        scope.launch {
+                                            val r = onTestKnock(
+                                                host,
+                                                portKnockSequence,
+                                                portKnockDelayMs.toIntOrNull()
+                                                    ?: KnockSequence.DEFAULT_DELAY_MS,
+                                            )
+                                            testResult = r
+                                            testRunning = false
+                                        }
+                                    },
+                                ) {
+                                    if (testRunning) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(14.dp),
+                                            strokeWidth = 2.dp,
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("Knocking…")
+                                    } else {
+                                        Text("Test knock")
+                                    }
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                testResult?.let { (ok, msg) ->
+                                    Text(
+                                        msg,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (ok) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.error,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
-            val canSave = when (connectionType) {
+            val knockOk = KnockSequence.parse(
+                portKnockSequence,
+                portKnockDelayMs.toIntOrNull() ?: KnockSequence.DEFAULT_DELAY_MS,
+            ).isSuccess
+            val canSave = knockOk && when (connectionType) {
                 "LOCAL" -> true // No host/auth needed
                 "SSH" -> host.isNotBlank()
                 "VNC" -> host.isNotBlank() && (!vncSshForward || vncSshProfileId != null)
@@ -2168,6 +2281,9 @@ fun ConnectionEditDialog(
                             vncColorDepth = vncColorDepth,
                             colorTag = colorTag,
                             groupId = groupId,
+                            portKnockSequence = portKnockSequence.ifBlank { null },
+                            portKnockDelayMs = portKnockDelayMs.toIntOrNull()
+                                ?.coerceAtLeast(0) ?: KnockSequence.DEFAULT_DELAY_MS,
                         )
                     } else if (connectionType == "RDP") {
                         val rdpPortInt = port.toIntOrNull() ?: 3389
@@ -2191,6 +2307,9 @@ fun ConnectionEditDialog(
                             rdpColorDepth = rdpColorDepth,
                             colorTag = colorTag,
                             groupId = groupId,
+                            portKnockSequence = portKnockSequence.ifBlank { null },
+                            portKnockDelayMs = portKnockDelayMs.toIntOrNull()
+                                ?.coerceAtLeast(0) ?: KnockSequence.DEFAULT_DELAY_MS,
                         )
                     } else if (connectionType == "RCLONE") {
                         (existing ?: ConnectionProfile(
@@ -2241,6 +2360,9 @@ fun ConnectionEditDialog(
                             smbSshProfileId = if (smbSshForward) smbSshProfileId else null,
                             colorTag = colorTag,
                             groupId = groupId,
+                            portKnockSequence = portKnockSequence.ifBlank { null },
+                            portKnockDelayMs = portKnockDelayMs.toIntOrNull()
+                                ?.coerceAtLeast(0) ?: KnockSequence.DEFAULT_DELAY_MS,
                         )
                     } else if (connectionType == "SSH") {
                         val portInt = port.toIntOrNull() ?: 22
@@ -2292,6 +2414,9 @@ fun ConnectionEditDialog(
                             vncColorDepth = if (vncSettingsStored) vncColorDepth else "BPP_24_TRUE",
                             colorTag = colorTag,
                             groupId = groupId,
+                            portKnockSequence = portKnockSequence.ifBlank { null },
+                            portKnockDelayMs = portKnockDelayMs.toIntOrNull()
+                                ?.coerceAtLeast(0) ?: KnockSequence.DEFAULT_DELAY_MS,
                         )
                     } else {
                         val savedHost = if (localSideband) "127.0.0.1" else rnsHost
