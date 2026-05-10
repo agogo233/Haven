@@ -2181,8 +2181,16 @@ internal class McpTools(
                 },
                 maxScrollbackLines = 1000,
             )
+            // writeInput must happen on the main looper — libvterm's
+            // OSC dispatch is wired against the same thread that
+            // initialised the native state, and cross-thread writes
+            // succeed at the cell level but silently drop OSC callbacks
+            // (notably 133 prompt markers and OSC 2 title). Mirroring
+            // EmulatorWriteBuffer's main-thread post pattern.
+            val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
             localSessionManager.startHeadlessShell(sessionId) { data, off, len ->
-                agentEmulator.writeInput(data, off, len)
+                val copy = data.copyOfRange(off, off + len)
+                mainHandler.post { agentEmulator.writeInput(copy, 0, copy.size) }
             }
             terminalSessionRegistry.register(sessionId, agentEmulator)
         } else {
