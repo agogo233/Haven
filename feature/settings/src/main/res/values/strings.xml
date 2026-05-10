@@ -55,6 +55,8 @@
     <string name="settings_session_persistence_none">None</string>
     <string name="settings_font_size_title">Terminal font size</string>
     <string name="settings_font_size_subtitle">%1$dsp</string>
+    <string name="settings_scrollback_rows_title">Scrollback rows</string>
+    <string name="settings_scrollback_rows_subtitle">%1$,d lines retained per tab — applies to new tabs</string>
     <string name="settings_color_scheme_title">Terminal color scheme</string>
     <string name="settings_toolbar_title">Keyboard toolbar</string>
     <string name="settings_toolbar_subtitle">Configure toolbar keys and layout</string>
@@ -162,6 +164,11 @@
     <string name="settings_font_size_dialog_title">Terminal font size</string>
     <string name="settings_font_size_sample">Sample text</string>
     <string name="settings_font_size_value">%1$dsp</string>
+
+    <!-- Scrollback rows dialog -->
+    <string name="settings_scrollback_rows_dialog_title">Scrollback rows per tab</string>
+    <string name="settings_scrollback_rows_dialog_body">Larger scrollback uses more memory. Roughly 2 KB per line at typical column widths, multiplied by the number of open tabs.</string>
+    <string name="settings_scrollback_rows_value">%1$,d lines</string>
 
     <!-- Toolbar config dialog -->
     <string name="settings_toolbar_dialog_title">Keyboard toolbar</string>

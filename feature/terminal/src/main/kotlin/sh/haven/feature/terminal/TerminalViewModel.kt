@@ -390,6 +390,19 @@ class TerminalViewModel @Inject constructor(
             )
 
     /**
+     * Scrollback ring size for newly created emulators (#151). Read at
+     * construction by [TerminalEmulatorFactory.create]; existing tabs keep
+     * the size they were created with.
+     */
+    private val terminalScrollbackRows: StateFlow<Int> =
+        preferencesRepository.terminalScrollbackRows
+            .stateIn(
+                viewModelScope,
+                SharingStarted.Eagerly,
+                UserPreferencesRepository.DEFAULT_SCROLLBACK_ROWS,
+            )
+
+    /**
      * Resolve the effective colour scheme for a tab built off [profile].
      * Per-profile override (#144) wins; a missing profile, null override
      * or unrecognised name all fall through to the global preference.
@@ -832,6 +845,7 @@ class TerminalViewModel @Inject constructor(
                     // Also resize the just-created session (not yet in _tabs)
                     termSession.resize(dims.columns, dims.rows)
                 },
+                maxScrollbackLines = terminalScrollbackRows.value,
             )
 
             if (existingTermSession == null) {
@@ -913,6 +927,7 @@ class TerminalViewModel @Inject constructor(
                     }
                     rnsSession.resize(dims.columns, dims.rows)
                 },
+                maxScrollbackLines = terminalScrollbackRows.value,
             )
 
             rnsSession.start()
@@ -1009,6 +1024,7 @@ class TerminalViewModel @Inject constructor(
                     }
                     moshSession.resize(dims.columns, dims.rows)
                 },
+                maxScrollbackLines = terminalScrollbackRows.value,
             )
 
             moshSession.start()
@@ -1104,6 +1120,7 @@ class TerminalViewModel @Inject constructor(
                     }
                     etSession.resize(dims.columns, dims.rows)
                 },
+                maxScrollbackLines = terminalScrollbackRows.value,
             )
 
             etSession.start()
@@ -1178,6 +1195,7 @@ class TerminalViewModel @Inject constructor(
                     }
                     localSession.resize(dims.columns, dims.rows)
                 },
+                maxScrollbackLines = terminalScrollbackRows.value,
             )
 
             localSession.start()

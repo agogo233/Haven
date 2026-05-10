@@ -18,6 +18,7 @@ class UserPreferencesRepository @Inject constructor(
 ) {
     private val biometricEnabledKey = booleanPreferencesKey("biometric_enabled")
     private val terminalFontSizeKey = intPreferencesKey("terminal_font_size")
+    private val terminalScrollbackRowsKey = intPreferencesKey("terminal_scrollback_rows")
     // Absolute path to a user-chosen Nerd Font (or any TTF/OTF). #123.
     private val terminalFontPathKey = stringPreferencesKey("terminal_font_path")
     private val themeKey = stringPreferencesKey("theme")
@@ -459,6 +460,24 @@ class UserPreferencesRepository @Inject constructor(
     }
 
     /**
+     * Maximum number of lines retained in each tab's scrollback ring (#151).
+     * The emulator reads this once at construction; changing it affects
+     * newly created tabs, not existing ones. Larger values cost roughly
+     * 2 KB per line at typical column widths, multiplied by the number of
+     * open tabs.
+     */
+    val terminalScrollbackRows: Flow<Int> = dataStore.data.map { prefs ->
+        (prefs[terminalScrollbackRowsKey] ?: DEFAULT_SCROLLBACK_ROWS)
+            .coerceIn(MIN_SCROLLBACK_ROWS, MAX_SCROLLBACK_ROWS)
+    }
+
+    suspend fun setTerminalScrollbackRows(rows: Int) {
+        dataStore.edit { prefs ->
+            prefs[terminalScrollbackRowsKey] = rows.coerceIn(MIN_SCROLLBACK_ROWS, MAX_SCROLLBACK_ROWS)
+        }
+    }
+
+    /**
      * Absolute path to a user-chosen TTF/OTF font that the terminal
      * should use in place of the bundled Hack font. Empty/null means
      * "use the default". The picker copies the chosen font into the
@@ -727,6 +746,11 @@ class UserPreferencesRepository @Inject constructor(
         const val DEFAULT_FONT_SIZE = 14
         const val MIN_FONT_SIZE = 8
         const val MAX_FONT_SIZE = 32
+        const val DEFAULT_SCROLLBACK_ROWS = 1000
+        const val MIN_SCROLLBACK_ROWS = 100
+        const val MAX_SCROLLBACK_ROWS = 25000
+        /** Suggested presets surfaced by the Settings UI. */
+        val SCROLLBACK_ROWS_PRESETS = listOf(1000, 5000, 10000, 25000)
         const val DEFAULT_TOOLBAR_ROWS = 2 // legacy
         const val DEFAULT_RETICULUM_HOST = "127.0.0.1"
         const val DEFAULT_RETICULUM_PORT = 37428

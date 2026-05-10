@@ -146,6 +146,7 @@ fun SettingsScreen(
     val showDesktopsCard by viewModel.showDesktopsCard.collectAsState()
     val lockTimeout by viewModel.lockTimeout.collectAsState()
     val fontSize by viewModel.terminalFontSize.collectAsState()
+    val scrollbackRows by viewModel.terminalScrollbackRows.collectAsState()
     val theme by viewModel.theme.collectAsState()
     val sessionManager by viewModel.sessionManager.collectAsState()
     val colorScheme by viewModel.terminalColorScheme.collectAsState()
@@ -188,6 +189,7 @@ fun SettingsScreen(
     var showWaylandShellDialog by remember { mutableStateOf(false) }
     var showMediaExtensionsDialog by remember { mutableStateOf(false) }
     var showFontSizeDialog by remember { mutableStateOf(false) }
+    var showScrollbackRowsDialog by remember { mutableStateOf(false) }
     var showSessionManagerDialog by remember { mutableStateOf(false) }
     var showThemeDialog by remember { mutableStateOf(false) }
     var showColorSchemeDialog by remember { mutableStateOf(false) }
@@ -375,6 +377,12 @@ fun SettingsScreen(
             title = stringResource(R.string.settings_font_size_title),
             subtitle = stringResource(R.string.settings_font_size_subtitle, fontSize),
             onClick = { showFontSizeDialog = true },
+        )
+        SettingsItem(
+            icon = Icons.Filled.History,
+            title = stringResource(R.string.settings_scrollback_rows_title),
+            subtitle = stringResource(R.string.settings_scrollback_rows_subtitle, scrollbackRows),
+            onClick = { showScrollbackRowsDialog = true },
         )
         run {
             val customFontPath by viewModel.terminalFontPath.collectAsState()
@@ -1158,6 +1166,17 @@ fun SettingsScreen(
         )
     }
 
+    if (showScrollbackRowsDialog) {
+        ScrollbackRowsDialog(
+            currentRows = scrollbackRows,
+            onDismiss = { showScrollbackRowsDialog = false },
+            onConfirm = { newRows ->
+                viewModel.setTerminalScrollbackRows(newRows)
+                showScrollbackRowsDialog = false
+            },
+        )
+    }
+
     if (showToolbarConfigDialog) {
         ToolbarConfigDialog(
             layout = toolbarLayout,
@@ -1768,6 +1787,56 @@ private fun FontSizeDialog(
         },
         confirmButton = {
             TextButton(onClick = { onConfirm(displaySize) }) {
+                Text(stringResource(R.string.common_ok))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.common_cancel))
+            }
+        },
+    )
+}
+
+@Composable
+private fun ScrollbackRowsDialog(
+    currentRows: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit,
+) {
+    val presets = UserPreferencesRepository.SCROLLBACK_ROWS_PRESETS
+    var selected by remember { mutableIntStateOf(currentRows) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.settings_scrollback_rows_dialog_title)) },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = stringResource(R.string.settings_scrollback_rows_dialog_body),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(bottom = 12.dp),
+                )
+                presets.forEach { preset ->
+                    val label = stringResource(R.string.settings_scrollback_rows_value, preset)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { selected = preset }
+                            .padding(vertical = 6.dp),
+                    ) {
+                        RadioButton(
+                            selected = selected == preset,
+                            onClick = { selected = preset },
+                        )
+                        Text(label, modifier = Modifier.padding(start = 8.dp))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(selected) }) {
                 Text(stringResource(R.string.common_ok))
             }
         },

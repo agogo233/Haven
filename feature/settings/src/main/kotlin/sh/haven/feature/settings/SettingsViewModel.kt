@@ -303,6 +303,13 @@ class SettingsViewModel @Inject constructor(
             UserPreferencesRepository.DEFAULT_FONT_SIZE,
         )
 
+    val terminalScrollbackRows: StateFlow<Int> = preferencesRepository.terminalScrollbackRows
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            UserPreferencesRepository.DEFAULT_SCROLLBACK_ROWS,
+        )
+
     val theme: StateFlow<UserPreferencesRepository.ThemeMode> = preferencesRepository.theme
         .stateIn(
             viewModelScope,
@@ -533,6 +540,12 @@ class SettingsViewModel @Inject constructor(
     fun setTerminalFontSize(sizeSp: Int) {
         viewModelScope.launch {
             preferencesRepository.setTerminalFontSize(sizeSp)
+        }
+    }
+
+    fun setTerminalScrollbackRows(rows: Int) {
+        viewModelScope.launch {
+            preferencesRepository.setTerminalScrollbackRows(rows)
         }
     }
 
