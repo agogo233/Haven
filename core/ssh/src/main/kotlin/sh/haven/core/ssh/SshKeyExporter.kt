@@ -14,9 +14,17 @@ import java.io.ByteArrayOutputStream
  */
 object SshKeyExporter {
 
+    private val PEM_PREAMBLE = "-----BEGIN ".toByteArray()
+
     fun toPem(privateKeyBytes: ByteArray, keyType: String): ByteArray {
-        // If it already looks like a PEM or OpenSSH private key, return as-is
-        if (privateKeyBytes.size > 5 && privateKeyBytes[0] == '-'.code.toByte()) {
+        // If it already looks like a PEM or OpenSSH private key, return
+        // as-is. A previous check of "first byte == '-'" produced a
+        // 1-in-256 false positive on random Ed25519 seeds (any seed
+        // starting with byte 0x2d looked like a PEM and was returned
+        // raw, then JSch rejected it with "invalid privatekey"). Match
+        // the full "-----BEGIN " preamble instead.
+        if (privateKeyBytes.size > PEM_PREAMBLE.size &&
+            privateKeyBytes.sliceArray(PEM_PREAMBLE.indices).contentEquals(PEM_PREAMBLE)) {
             return privateKeyBytes
         }
 
