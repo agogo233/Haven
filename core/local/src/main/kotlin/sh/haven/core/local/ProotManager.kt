@@ -257,6 +257,46 @@ class ProotManager @Inject constructor(
             sizeEstimate = "~80MB",
             isWayland = true,
             isNative = true,
+        ),
+
+        // Phase 4 nested wlroots compositors — run inside the rootfs on
+        // wlroots' headless backend and surface via wayvnc on the same
+        // VNC port a Xvnc desktop would. `isWayland = true` so callers
+        // that route around the X11 startup script (e.g. setupDesktop's
+        // xstartup writer) treat them like the labwc native path. Unlike
+        // labwc, these are NOT `isNative` — they live entirely inside
+        // the rootfs with no JNI bridge.
+        //
+        // [packages] mirrors the APK list for backwards-compat with
+        // call-sites that still consult the legacy string; the
+        // authoritative per-family lists live on the parallel
+        // [DesktopEnvironmentSpec.packagesPerFamily].
+        SWAY(
+            id = "sway",
+            label = "Sway (nested Wayland)",
+            packages = "sway wayvnc foot xkeyboard-config font-noto",
+            verifyBinary = "usr/bin/sway",
+            startCommands = "",
+            sizeEstimate = "~60MB",
+            isWayland = true,
+        ),
+        HYPRLAND(
+            id = "hyprland",
+            label = "Hyprland (nested Wayland)",
+            packages = "hyprland wayvnc foot xkeyboard-config font-noto",
+            verifyBinary = "usr/bin/Hyprland",
+            startCommands = "",
+            sizeEstimate = "~90MB",
+            isWayland = true,
+        ),
+        NIRI(
+            id = "niri",
+            label = "Niri (nested Wayland, scrolling tile)",
+            packages = "niri wayvnc foot noto-fonts",
+            verifyBinary = "usr/bin/niri",
+            startCommands = "",
+            sizeEstimate = "~70MB",
+            isWayland = true,
         );
 
         /**
@@ -1266,7 +1306,7 @@ class ProotManager @Inject constructor(
             Log.d(TAG, "${de.label} packages installed")
             }
 
-            if (de.spec.launch !is LaunchSpec.NativeCompositor) {
+            if (de.spec.launch is LaunchSpec.X11Vnc) {
                 _desktopState.value = DesktopSetupState.Installing("Configuring VNC...")
 
                 // Write VNC password — use a temp file to avoid leaking
@@ -1301,6 +1341,22 @@ unset DBUS_SESSION_BUS_ADDRESS
 exec startxfce4
 XEOF
 chmod +x /root/.vnc/xstartup""")
+            }
+
+            // Seed minimum-viable config files (Phase 4 nested wlroots
+            // compositors need at least a headless output declaration to
+            // render anything). Write-if-absent so user edits survive a
+            // re-install. NativeCompositor and X11Vnc DEs declare an
+            // empty configSeed map today and skip this loop unchanged.
+            for ((relPath, content) in de.spec.configSeed) {
+                val target = File(activeRootfsDir, relPath)
+                if (target.exists()) {
+                    Log.d(TAG, "[de-config ${de.spec.id}] keeping existing $relPath")
+                    continue
+                }
+                target.parentFile?.mkdirs()
+                target.writeText(content)
+                Log.d(TAG, "[de-config ${de.spec.id}] seeded $relPath (${content.length} bytes)")
             }
 
             Log.d(TAG, "[de-config ${de.spec.id}] complete")

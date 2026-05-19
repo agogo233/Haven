@@ -132,12 +132,11 @@ class DesktopManager @Inject constructor(
                 return
             }
             is LaunchSpec.NestedWayland -> {
-                // Phase 4 — landing alongside Hyprland/niri/Sway support.
-                _desktops.update { it + (de to DesktopInstance(
-                    de, 0, 0, DesktopState.ERROR,
-                    errorMessage = "Nested Wayland compositors land in Phase 4 (issue #162)",
-                )) }
-                return
+                // Phase 4: launch is structurally identical to X11Vnc up to
+                // the per-DE process-spawn step. Allocate display + port
+                // through the same code, then call launchNestedWayland().
+                // Fall through to the shared X11/Nested branch below; the
+                // per-DE process spawner is dispatched on launch type.
             }
             is LaunchSpec.X11Vnc -> {
                 // Falls through to the X11/VNC launch below.
@@ -172,7 +171,12 @@ class DesktopManager @Inject constructor(
         _desktops.update { it + (de to DesktopInstance(de, display, port, DesktopState.STARTING)) }
 
         try {
-            val process = launchX11Desktop(de, display, shellCommand)
+            val process = when (de.spec.launch) {
+                is LaunchSpec.NestedWayland -> launchNestedWayland(de, display, port)
+                is LaunchSpec.X11Vnc -> launchX11Desktop(de, display, shellCommand)
+                is LaunchSpec.NativeCompositor ->
+                    error("NativeCompositor handled above; unreachable")
+            }
             processes[de] = process
             _desktops.update { it + (de to DesktopInstance(de, display, port, DesktopState.RUNNING)) }
 
@@ -208,8 +212,8 @@ class DesktopManager @Inject constructor(
      */
     fun stopDesktop(de: ProotManager.DesktopEnvironment) {
         val instance = _desktops.value[de] ?: return
-        val isNative = de.spec.launch is LaunchSpec.NativeCompositor
-        if (isNative) {
+        val launch = de.spec.launch
+        if (launch is LaunchSpec.NativeCompositor) {
             if (WaylandBridge.nativeIsRunning()) {
                 WaylandBridge.nativeStop()
             }
@@ -218,8 +222,14 @@ class DesktopManager @Inject constructor(
         }
         processes[de]?.destroyForcibly()
         processes.remove(de)
-        if (!isNative) {
-            killOrphanedXvnc(instance.displayNumber)
+        if (launch !is LaunchSpec.NativeCompositor) {
+            // X11 launches leak Xvnc when the parent proot dies; nested
+            // wlroots launches use the headless backend (no Xvnc) and the
+            // compositor+wayvnc tree exits cleanly with destroyForcibly,
+            // so only run the orphan-Xvnc sweep on X11.
+            if (launch is LaunchSpec.X11Vnc) {
+                killOrphanedXvnc(instance.displayNumber)
+            }
             releaseDisplay(instance.displayNumber)
         }
         _desktops.update { it - de }
@@ -291,6 +301,113 @@ class DesktopManager @Inject constructor(
         // /bin/sh works on both Alpine (symlink to busybox) and Debian
         // (symlink to dash). See ProotManager.runCommandInProot.
         prootArgs.addAll(listOf("-w", "/root", "/bin/sh", "-c", shellCmd))
+
+        return ProcessBuilder(prootArgs).apply {
+            environment().apply {
+                put("HOME", "/root")
+                put("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+                put("PROOT_TMP_DIR", context.cacheDir.absolutePath)
+                put("PROOT_LOADER", loaderPath)
+            }
+            redirectErrorStream(true)
+        }.start()
+    }
+
+    // ---- Nested Wayland (wlroots headless backend + wayvnc) ----
+
+    /**
+     * Launch a wlroots-based compositor (Sway / Hyprland / niri) on
+     * the headless backend inside the proot rootfs, exposed to the
+     * outside world via `wayvnc` listening on [port]. The in-app VNC
+     * client connects to localhost:port through the same path it uses
+     * for Xvnc desktops, so the connect-side UI is unchanged.
+     *
+     * Auth model: this initial Phase 4 launches wayvnc with no
+     * password (matches the existing X11 "-SecurityTypes None" fallback
+     * when no .vnc/passwd exists). wayvnc's username/password auth
+     * landed in 0.7+; supported distro packages range from 0.5 to 0.9,
+     * so wiring auth is deferred until the version floor lifts.
+     *
+     * Singleton-friendly: each running NestedWayland DE gets its own
+     * XDG_RUNTIME_DIR under `/tmp/xdg-runtime-<display>`. Multiple
+     * nested compositors can run concurrently as long as their
+     * displays differ.
+     */
+    private fun launchNestedWayland(
+        de: ProotManager.DesktopEnvironment,
+        display: Int,
+        port: Int,
+    ): Process {
+        val prootBin = prootManager.prootBinary
+            ?: throw IllegalStateException("PRoot not available")
+        val loaderPath = File(
+            context.applicationInfo.nativeLibraryDir, "libproot_loader.so",
+        ).absolutePath
+        val rootfsDir = prootManager.activeRootfsDir
+        File(rootfsDir, "root").mkdirs()
+
+        val launch = de.spec.launch as LaunchSpec.NestedWayland
+        val xdgInProot = "/tmp/xdg-runtime-$display"
+
+        // Wlroots headless setup:
+        //  - WLR_BACKENDS=headless: skip DRM/libinput entirely.
+        //  - WLR_HEADLESS_OUTPUTS=1: create one virtual output at boot.
+        //    Without this, wlroots starts with zero outputs and the
+        //    compositor's config-time `output HEADLESS-1 ...` directive
+        //    has nothing to apply to.
+        //  - WLR_LIBINPUT_NO_DEVICES=1: belt-and-braces for the input
+        //    side; headless backend already provides virtual seat.
+        //  - XKB_DEFAULT_LAYOUT=us: avoid xkbcommon falling back to
+        //    /etc/default/keyboard which proot environments lack.
+        //
+        // niri uses smithay rather than wlroots and reads only some of
+        // the above; passing them is harmless and the niri-specific
+        // setup (auto-detect headless when no Wayland/DRM is found)
+        // does the rest.
+        val shellCmd =
+            "mkdir -p $xdgInProot && chmod 700 $xdgInProot && " +
+                "export XDG_RUNTIME_DIR=$xdgInProot && " +
+                "export HOME=/root && " +
+                "export WLR_BACKENDS=headless && " +
+                "export WLR_HEADLESS_OUTPUTS=1 && " +
+                "export WLR_LIBINPUT_NO_DEVICES=1 && " +
+                "export XKB_DEFAULT_LAYOUT=us && " +
+                "export XKB_DEFAULT_RULES=evdev && " +
+                "export XDG_SESSION_TYPE=wayland && " +
+                // Start the compositor in the background. Stderr is
+                // captured so a failure surfaces in logcat alongside
+                // wayvnc's own diagnostics; the parent process is wayvnc
+                // (foreground) so destroyForcibly() of the proot tree
+                // tears down both halves.
+                "(${launch.compositorCmd}) > $xdgInProot/compositor.log 2>&1 & " +
+                "comp_pid=\$! ; " +
+                // Wait up to 10 s for the wayland socket to appear. The
+                // headless backend creates `wayland-1` as the first free
+                // socket; we let the compositor pick the name and read
+                // it back here.
+                "i=0 ; while [ ! -e $xdgInProot/wayland-1 ] && [ \$i -lt 20 ]; do sleep 0.5; i=\$((i+1)); done ; " +
+                "if [ ! -e $xdgInProot/wayland-1 ]; then " +
+                    "echo '[haven] compositor did not create $xdgInProot/wayland-1 — log tail:' ; " +
+                    "tail -n 50 $xdgInProot/compositor.log 2>&1 ; " +
+                    "kill \$comp_pid 2>/dev/null ; " +
+                    "exit 1 ; " +
+                "fi ; " +
+                "export WAYLAND_DISPLAY=wayland-1 ; " +
+                // wayvnc 0.5 (Debian) doesn't accept --max-fps; pass only
+                // the universal args. `--gpu-rendering=off` and disable
+                // hardware encoding to avoid pulling on a non-existent
+                // GPU under proot. wayvnc exits when the compositor dies.
+                "exec wayvnc --render-cursor 0.0.0.0 $port"
+
+        val prootArgs = mutableListOf(
+            prootBin, "-0", "--link2symlink",
+            "-r", rootfsDir.absolutePath,
+            "-b", "/dev", "-b", "/proc", "-b", "/sys",
+            "-b", "${context.cacheDir.absolutePath}:/tmp",
+        )
+        prootArgs.addAll(listOf("-w", "/root", "/bin/sh", "-c", shellCmd))
+
+        Log.d(TAG, "Starting ${de.label} (nested wayland) on port $port (display $display)")
 
         return ProcessBuilder(prootArgs).apply {
             environment().apply {

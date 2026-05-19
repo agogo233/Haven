@@ -149,6 +149,17 @@ data class DesktopEnvironmentSpec(
      * but desktop install fails on fontconfig".
      */
     val compatibilityNote: Map<PackageFamily, String> = emptyMap(),
+    /**
+     * Minimum-viable config files seeded into the rootfs at DE install
+     * time. Keys are paths relative to the rootfs (e.g.
+     * `root/.config/sway/config`); values are full file contents. The
+     * installer writes each entry only if the target file is missing,
+     * so user edits survive subsequent installs. Empty for DEs that
+     * read sensible defaults out of the box (Openbox, Xfce4); populated
+     * for nested wlroots compositors that need at least a headless
+     * output declaration to render.
+     */
+    val configSeed: Map<String, String> = emptyMap(),
 ) {
     fun compatibilityOn(family: PackageFamily): Compatibility =
         compatibility[family] ?: Compatibility.Stable
@@ -503,7 +514,183 @@ object DesktopCatalog {
         sizeEstimateMb = 80,
     )
 
-    val all: List<DesktopEnvironmentSpec> = listOf(OPENBOX, XFCE4, LABWC_NATIVE)
+    /**
+     * Note shared by all Phase-4 NestedWayland DEs. wayvnc carries only
+     * single-point pointer events — two-finger scroll, pinch, multi-touch
+     * gestures don't reach the compositor. CLI / keyboard / single-finger
+     * pointer all work; the limitation matters most for compositors that
+     * expect touch-gesture interaction.
+     */
+    private const val NESTED_WAYLAND_VNC_NOTE: String =
+        "Nested Wayland compositors run headless inside the rootfs and " +
+            "expose a VNC port via wayvnc. The in-app VNC client only " +
+            "forwards single-point pointer events, so two-finger scroll, " +
+            "pinch, and multi-touch gestures will not reach the compositor."
+
+    val SWAY = DesktopEnvironmentSpec(
+        id = "sway",
+        label = "Sway (nested Wayland)",
+        packagesPerFamily = mapOf(
+            PackageFamily.APK to listOf("sway", "wayvnc", "foot", "xkeyboard-config", "font-noto"),
+            PackageFamily.APT to listOf("sway", "wayvnc", "foot", "fonts-noto-core"),
+            PackageFamily.PACMAN to listOf("sway", "wayvnc", "foot", "noto-fonts"),
+            PackageFamily.XBPS to listOf("sway", "wayvnc", "foot", "noto-fonts-ttf"),
+        ),
+        verifyBinary = "usr/bin/sway",
+        launch = LaunchSpec.NestedWayland(compositorCmd = "sway"),
+        sizeEstimateMb = 60,
+        compatibility = mapOf(
+            PackageFamily.XBPS to Compatibility.Experimental,
+        ),
+        compatibilityNote = mapOf(
+            PackageFamily.APK to NESTED_WAYLAND_VNC_NOTE,
+            PackageFamily.APT to NESTED_WAYLAND_VNC_NOTE,
+            PackageFamily.PACMAN to NESTED_WAYLAND_VNC_NOTE,
+            PackageFamily.XBPS to NESTED_WAYLAND_VNC_NOTE +
+                " On Void, sway depends on xbps's runit-init compat shims " +
+                "which may need a manual top-up after install.",
+        ),
+        configSeed = mapOf(
+            "root/.config/sway/config" to """
+                # Haven nested-wayland default config — edit freely.
+                # See https://github.com/swaywm/sway/wiki for the full grammar.
+
+                set ${'$'}mod Mod4
+                set ${'$'}term foot
+
+                output HEADLESS-1 mode 1280x720@60
+                output HEADLESS-1 scale 1
+
+                input * {
+                    xkb_layout "us"
+                }
+
+                bindsym ${'$'}mod+Return exec ${'$'}term
+                bindsym ${'$'}mod+q kill
+                bindsym ${'$'}mod+d exec ${'$'}term -e sh -lc 'compgen -c | sort -u | head -100; read -p "cmd: " c; exec ${'$'}c'
+                bindsym ${'$'}mod+Shift+e exit
+
+                # Auto-launch a terminal so a fresh VNC connection has something
+                # to interact with. wayvnc-only sessions are otherwise blank.
+                exec sleep 1 && foot
+            """.trimIndent(),
+        ),
+    )
+
+    val HYPRLAND = DesktopEnvironmentSpec(
+        id = "hyprland",
+        label = "Hyprland (nested Wayland)",
+        packagesPerFamily = mapOf(
+            PackageFamily.APK to listOf("hyprland", "wayvnc", "foot", "xkeyboard-config", "font-noto"),
+            // Debian (Bookworm / Bookworm-backports / Trixie) does NOT
+            // package hyprland — verified via packages.debian.org search.
+            // Users on Debian get the slot greyed out with a "not packaged
+            // upstream" tag once the install dialog surfaces that case;
+            // omitting APT here keeps the install path from offering a
+            // package list it cannot satisfy.
+            PackageFamily.PACMAN to listOf("hyprland", "wayvnc", "foot", "noto-fonts"),
+            PackageFamily.XBPS to listOf("hyprland", "wayvnc", "foot", "noto-fonts-ttf"),
+        ),
+        verifyBinary = "usr/bin/Hyprland",
+        launch = LaunchSpec.NestedWayland(compositorCmd = "Hyprland"),
+        sizeEstimateMb = 90,
+        compatibility = mapOf(
+            // Alpine community pins hyprland to an older minor release;
+            // wlroots-backend behaviour on proot is not yet verified.
+            PackageFamily.APK to Compatibility.Experimental,
+            PackageFamily.XBPS to Compatibility.Experimental,
+        ),
+        compatibilityNote = mapOf(
+            PackageFamily.APK to NESTED_WAYLAND_VNC_NOTE +
+                " Alpine 3.21 packages an older Hyprland release; if you " +
+                "need the latest, prefer Arch.",
+            PackageFamily.PACMAN to NESTED_WAYLAND_VNC_NOTE,
+            PackageFamily.XBPS to NESTED_WAYLAND_VNC_NOTE,
+        ),
+        configSeed = mapOf(
+            "root/.config/hypr/hyprland.conf" to """
+                # Haven nested-wayland default config — edit freely.
+                # See https://wiki.hyprland.org/ for the full grammar.
+
+                monitor = HEADLESS-1, 1280x720@60, 0x0, 1
+                monitor = , preferred, auto, 1
+
+                input {
+                    kb_layout = us
+                    follow_mouse = 1
+                }
+
+                general {
+                    gaps_in = 4
+                    gaps_out = 8
+                    border_size = 2
+                }
+
+                ${'$'}mod = SUPER
+
+                bind = ${'$'}mod, Return, exec, foot
+                bind = ${'$'}mod, Q, killactive
+                bind = ${'$'}mod SHIFT, E, exit
+
+                # Auto-launch a terminal — wayvnc-only sessions are otherwise
+                # blank on first connect.
+                exec-once = sleep 1 && foot
+            """.trimIndent(),
+        ),
+    )
+
+    val NIRI = DesktopEnvironmentSpec(
+        id = "niri",
+        label = "Niri (nested Wayland, scrolling tile)",
+        packagesPerFamily = mapOf(
+            // Alpine 3.21 community + Debian bookworm/trixie do NOT
+            // package niri — Arch and Void are the practical paths.
+            PackageFamily.PACMAN to listOf("niri", "wayvnc", "foot", "noto-fonts"),
+            PackageFamily.XBPS to listOf("niri", "wayvnc", "foot", "noto-fonts-ttf"),
+        ),
+        verifyBinary = "usr/bin/niri",
+        launch = LaunchSpec.NestedWayland(compositorCmd = "niri"),
+        sizeEstimateMb = 70,
+        compatibility = mapOf(
+            PackageFamily.XBPS to Compatibility.Experimental,
+        ),
+        compatibilityNote = mapOf(
+            PackageFamily.PACMAN to NESTED_WAYLAND_VNC_NOTE,
+            PackageFamily.XBPS to NESTED_WAYLAND_VNC_NOTE,
+        ),
+        configSeed = mapOf(
+            "root/.config/niri/config.kdl" to """
+                // Haven nested-wayland default config — edit freely.
+                // See https://github.com/YaLTeR/niri/wiki for the full grammar.
+
+                input {
+                    keyboard {
+                        xkb {
+                            layout "us"
+                        }
+                    }
+                }
+
+                output "HEADLESS-1" {
+                    mode "1280x720@60.000"
+                    scale 1.0
+                }
+
+                binds {
+                    Mod+Return { spawn "foot"; }
+                    Mod+Q { close-window; }
+                    Mod+Shift+E { quit; }
+                }
+
+                spawn-at-startup "foot"
+            """.trimIndent(),
+        ),
+    )
+
+    val all: List<DesktopEnvironmentSpec> = listOf(
+        OPENBOX, XFCE4, LABWC_NATIVE,
+        SWAY, HYPRLAND, NIRI,
+    )
 
     fun lookup(id: String): DesktopEnvironmentSpec? = all.firstOrNull { it.id == id }
 }
