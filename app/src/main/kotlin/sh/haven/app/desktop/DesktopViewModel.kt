@@ -15,7 +15,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import sh.haven.core.data.agent.AgentUiCommand
 import sh.haven.core.data.db.entities.ConnectionLog
+import sh.haven.core.data.db.entities.ConnectionProfile
 import sh.haven.core.data.preferences.UserPreferencesRepository
 import sh.haven.core.data.repository.ConnectionLogRepository
 import sh.haven.core.data.repository.ConnectionRepository
@@ -96,6 +98,44 @@ class DesktopViewModel @Inject constructor(
 
     fun switchActiveDistro(distroId: String) {
         prootManager.setActiveDistroId(distroId)
+    }
+
+    /**
+     * Open a terminal tab into the given distro. Restores the entry-point
+     * removed in v5.38.0 when the Connections topbar lost its "Alpine
+     * console" icon — see GlassHaven/Haven#168. Reuses the single canonical
+     * "Local Shell" profile (mirrors McpTools.openLocalShell so the agent
+     * and the user reach the same place) and switches the active distro
+     * to [distroId] first, so the proot session boots into the right
+     * rootfs. The pager switch to the Terminal tab and the tab creation
+     * are driven by [AgentUiCommand.OpenTerminalSession] — HavenNavHost
+     * collects the bus and animates the page; TerminalViewModel collects
+     * the same bus and calls addLocalTabForProfile for the LOCAL profile.
+     */
+    fun openShellForDistro(distroId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (prootManager.activeDistroId != distroId) {
+                prootManager.setActiveDistroId(distroId)
+            }
+            val all = connectionRepository.getAll()
+            val profile = all.firstOrNull {
+                it.connectionType == "LOCAL" && !it.useAndroidShell
+            } ?: run {
+                val seeded = ConnectionProfile(
+                    label = "Local Shell",
+                    host = "localhost",
+                    username = "",
+                    port = 0,
+                    connectionType = "LOCAL",
+                    useAndroidShell = false,
+                )
+                connectionRepository.save(seeded)
+                connectionRepository.getAll().firstOrNull {
+                    it.connectionType == "LOCAL" && it.label == "Local Shell" && !it.useAndroidShell
+                } ?: seeded
+            }
+            agentUiCommandBus.emit(AgentUiCommand.OpenTerminalSession(profile.id))
+        }
     }
 
     /**

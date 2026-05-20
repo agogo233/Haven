@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -109,6 +110,7 @@ fun DesktopManagerScreen(viewModel: DesktopViewModel = hiltViewModel()) {
             isRootfsReady = isRootfsReady,
             storedVncPortFor = { viewModel.storedVncPortFor(it) },
             onSwitchDistro = { viewModel.switchActiveDistro(it) },
+            onOpenShellForDistro = { viewModel.openShellForDistro(it) },
             onAddDistro = { viewModel.addDistro(it) },
             onDeleteDistro = { viewModel.deleteDistro(it.id) },
             onInstall = { setupDesktopDe = it },
@@ -156,6 +158,7 @@ private fun DesktopManagerSection(
     isRootfsReady: Boolean,
     storedVncPortFor: (ProotManager.DesktopEnvironment) -> Int?,
     onSwitchDistro: (String) -> Unit,
+    onOpenShellForDistro: (String) -> Unit,
     onAddDistro: (Distro) -> Unit,
     onDeleteDistro: (Distro) -> Unit,
     onInstall: (ProotManager.DesktopEnvironment) -> Unit,
@@ -216,6 +219,28 @@ private fun DesktopManagerSection(
                                                 modifier = Modifier.size(20.dp),
                                             )
                                             Spacer(Modifier.width(4.dp))
+                                        }
+                                        // Restored entry-point for the
+                                        // proot shell that used to live
+                                        // on the Connections topbar
+                                        // (removed in v5.38.0 when the
+                                        // Desktop tab was promoted —
+                                        // GlassHaven/Haven#168). One tap
+                                        // switches the active distro and
+                                        // opens a local-shell tab in the
+                                        // Terminal screen.
+                                        IconButton(
+                                            onClick = {
+                                                distroMenuOpen = false
+                                                onOpenShellForDistro(distro.id)
+                                            },
+                                            modifier = Modifier.size(32.dp),
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.Terminal,
+                                                contentDescription = "Open shell in ${distro.label}",
+                                                modifier = Modifier.size(18.dp),
+                                            )
                                         }
                                         IconButton(
                                             onClick = {
