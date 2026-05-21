@@ -1396,23 +1396,7 @@ chmod +x /root/.vnc/xstartup""")
             // install so a Haven update can ship a newer shim without
             // user intervention.
             if (de.spec.launch is LaunchSpec.NestedWayland) {
-                val abi = android.os.Build.SUPPORTED_ABIS.firstOrNull { it == "arm64-v8a" || it == "x86_64" }
-                if (abi != null) {
-                    val asset = "wayvnc-shim/$abi/libhaven_wayvnc_shim.so"
-                    val target = File(activeRootfsDir, "usr/local/lib/haven/libhaven_wayvnc_shim.so")
-                    target.parentFile?.mkdirs()
-                    try {
-                        context.assets.open(asset).use { input ->
-                            target.outputStream().use { output -> input.copyTo(output) }
-                        }
-                        target.setReadable(true, false)
-                        Log.d(TAG, "[de-config ${de.spec.id}] staged wayvnc shim from $asset (${target.length()} bytes)")
-                    } catch (e: Exception) {
-                        Log.w(TAG, "[de-config ${de.spec.id}] failed to stage wayvnc shim: ${e.message}")
-                    }
-                } else {
-                    Log.w(TAG, "[de-config ${de.spec.id}] no wayvnc shim asset for ABI ${android.os.Build.SUPPORTED_ABIS.toList()}")
-                }
+                stageWayvncShim(de)
 
                 // Seed fuzzel + foot configs and a small .desktop set so
                 // the auto-launched fuzzel picker has something to show
@@ -1500,7 +1484,40 @@ chmod +x /root/.vnc/xstartup""")
      * a config that no longer contains a legacy marker is left alone.
      * No-op for DEs with an empty configSeed.
      */
+    /**
+     * Copy the wayvnc capture-fallback shim from APK assets into the rootfs,
+     * overwriting any existing copy. Called both at install time and on every
+     * desktop start (via [migrateDesktopConfigs]) so a Haven update that ships
+     * a newer/fixed shim reaches existing installs without a reinstall — e.g.
+     * the v5.43.8 musl-compat rebuild (#162): the install-time copy alone left
+     * the old glibc-fortify shim in place on Alpine, where it failed to
+     * relocate `__fprintf_chk`.
+     */
+    private fun stageWayvncShim(de: DesktopEnvironment) {
+        if (de.spec.launch !is LaunchSpec.NestedWayland) return
+        val abi = android.os.Build.SUPPORTED_ABIS.firstOrNull { it == "arm64-v8a" || it == "x86_64" }
+        if (abi == null) {
+            Log.w(TAG, "[de-config ${de.spec.id}] no wayvnc shim asset for ABI ${android.os.Build.SUPPORTED_ABIS.toList()}")
+            return
+        }
+        val asset = "wayvnc-shim/$abi/libhaven_wayvnc_shim.so"
+        val target = File(activeRootfsDir, "usr/local/lib/haven/libhaven_wayvnc_shim.so")
+        target.parentFile?.mkdirs()
+        try {
+            context.assets.open(asset).use { input ->
+                target.outputStream().use { output -> input.copyTo(output) }
+            }
+            target.setReadable(true, false)
+            Log.d(TAG, "[de-config ${de.spec.id}] staged wayvnc shim from $asset (${target.length()} bytes)")
+        } catch (e: Exception) {
+            Log.w(TAG, "[de-config ${de.spec.id}] failed to stage wayvnc shim: ${e.message}")
+        }
+    }
+
     fun migrateDesktopConfigs(de: DesktopEnvironment) {
+        // Refresh the shim on every start so an app update's newer shim
+        // replaces a stale one in an existing rootfs (#162).
+        stageWayvncShim(de)
         for ((relPath, content) in de.spec.configSeed) {
             val target = File(activeRootfsDir, relPath)
             val existing = if (target.exists()) {
