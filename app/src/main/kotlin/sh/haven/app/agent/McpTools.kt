@@ -1218,13 +1218,13 @@ internal class McpTools(
         ) { args -> getProotInstallLog(args) },
 
         "set_terminal_font_from_url" to ToolHandler(
-            description = "Download a TTF/OTF font from a URL, validate it, install it as Haven's terminal font (replacing any prior custom font), and return the saved path. Useful for agent-driven Nerd Font installs (#123). Requires the URL to be reachable from the device — use a tunneled URL (via add_port_forward LOCAL) to expose a workstation HTTP server back through the existing SSH session.",
+            description = "Download a font from a URL, validate it, install it as Haven's terminal font (replacing any prior custom font), and return the saved path. The URL may point at a .ttf/.otf, or a .zip containing them (a Regular face is auto-extracted) — useful for repos like Maple/Nerd Fonts that ship only zips (#123, #177). WOFF/WOFF2 web fonts are rejected (Android can't render them). Requires the URL to be reachable from the device — use a tunneled URL (via add_port_forward LOCAL) to expose a workstation HTTP server back through the existing SSH session.",
             inputSchema = JSONObject().apply {
                 put("type", "object")
                 put("properties", JSONObject().apply {
                     put("url", JSONObject().apply {
                         put("type", "string")
-                        put("description", "http(s) URL pointing at a TTF or OTF file. Should resolve to font bytes (no HTML wrapper).")
+                        put("description", "http(s) URL resolving to a .ttf/.otf, or a .zip of them (no HTML wrapper). WOFF/WOFF2 are not supported.")
                     })
                 })
                 put("required", JSONArray().put("url"))

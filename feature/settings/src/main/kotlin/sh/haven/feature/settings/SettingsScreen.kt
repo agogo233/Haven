@@ -393,7 +393,7 @@ fun SettingsScreen(
             SettingsItem(
                 icon = Icons.Filled.CloudDownload,
                 title = "Install font from URL…",
-                subtitle = "Fetch a TTF/OTF directly (mirrors the agent's set_terminal_font_from_url tool)",
+                subtitle = "Fetch a .ttf/.otf, or a .zip of them (mirrors the agent's set_terminal_font_from_url tool)",
                 onClick = { showFontUrlDialog = true },
             )
             if (customFontPath != null) {
