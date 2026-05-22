@@ -591,7 +591,7 @@ internal class McpTools(
         ) { _ -> readClipboard() },
 
         "get_preference" to ToolHandler(
-            description = "Read a Haven user preference by key. Whitelisted keys: terminal_scrollback_rows, terminal_tap_to_position_cursor, terminal_font_size, terminal_color_scheme, mouse_input_enabled, mouse_drag_selects, terminal_right_click, mcp_tunnel_endpoint_profile_id, mcp_wireguard_enabled. Returns { key, value } where value's type follows the preference's type (int / boolean / string).",
+            description = "Read a Haven user preference by key. Whitelisted keys: terminal_scrollback_rows, terminal_tap_to_position_cursor, terminal_font_size, terminal_color_scheme, mouse_input_enabled, mouse_drag_selects, terminal_right_click, mcp_tunnel_endpoint_profile_id, mcp_wireguard_enabled, usb_guest_exposure_enabled. Returns { key, value } where value's type follows the preference's type (int / boolean / string).",
             inputSchema = JSONObject().apply {
                 put("type", "object")
                 put("properties", JSONObject().apply {
@@ -800,7 +800,7 @@ internal class McpTools(
         ) { args -> writeClipboard(args) },
 
         "set_preference" to ToolHandler(
-            description = "Write a Haven user preference. Whitelisted keys (and their types): terminal_scrollback_rows (int 100..25000), terminal_tap_to_position_cursor (bool), terminal_font_size (int 8..32), mouse_input_enabled (bool), mouse_drag_selects (bool), terminal_right_click (bool), mcp_tunnel_endpoint_profile_id (string SSH profile id, empty to clear), mcp_wireguard_enabled (bool). Returns { key, value }.",
+            description = "Write a Haven user preference. Whitelisted keys (and their types): terminal_scrollback_rows (int 100..25000), terminal_tap_to_position_cursor (bool), terminal_font_size (int 8..32), mouse_input_enabled (bool), mouse_drag_selects (bool), terminal_right_click (bool), mcp_tunnel_endpoint_profile_id (string SSH profile id, empty to clear), mcp_wireguard_enabled (bool), usb_guest_exposure_enabled (bool — master gate for usb_attach_to_guest). Returns { key, value }.",
             inputSchema = JSONObject().apply {
                 put("type", "object")
                 put("properties", JSONObject().apply {
@@ -3301,6 +3301,9 @@ internal class McpTools(
         "mcp_tunnel_endpoint_profile_id",
         // Whether the MCP server also binds on the active WireGuard tunnel.
         "mcp_wireguard_enabled",
+        // Master opt-in for exposing USB devices to the proot guest (gates
+        // usb_attach_to_guest). MCP-drivable so integration tests can flip it.
+        "usb_guest_exposure_enabled",
     )
 
     private suspend fun getPreference(args: JSONObject): JSONObject {
@@ -3319,6 +3322,7 @@ internal class McpTools(
             "terminal_right_click" -> preferencesRepository.terminalRightClick.first()
             "mcp_tunnel_endpoint_profile_id" -> preferencesRepository.mcpTunnelEndpointProfileId.first() ?: ""
             "mcp_wireguard_enabled" -> preferencesRepository.mcpWireguardEnabled.first()
+            "usb_guest_exposure_enabled" -> preferencesRepository.usbGuestExposureEnabled.first()
             else -> throw McpError(-32602, "Preference $key is not in the whitelist")
         }
         return JSONObject().apply {
@@ -3362,6 +3366,7 @@ internal class McpTools(
             "mcp_tunnel_endpoint_profile_id" ->
                 preferencesRepository.setMcpTunnelEndpointProfileId((rawValue as? String)?.ifBlank { null })
             "mcp_wireguard_enabled" -> preferencesRepository.setMcpWireguardEnabled(coerceBool())
+            "usb_guest_exposure_enabled" -> preferencesRepository.setUsbGuestExposureEnabled(coerceBool())
         }
         return JSONObject().apply {
             put("key", key)
@@ -4151,6 +4156,16 @@ internal class McpTools(
     """.trimIndent()
 
     private suspend fun usbAttachToGuest(args: JSONObject): JSONObject = withContext(Dispatchers.IO) {
+        // Master opt-in gate (Settings → "Expose USB devices to the Linux
+        // guest"). Off by default — guest exposure lets any guest app reach the
+        // device, so it needs a deliberate user switch on top of per-call consent.
+        if (!preferencesRepository.usbGuestExposureEnabled.first()) {
+            throw McpError(
+                -32603,
+                "USB-to-guest is disabled. Enable Settings → \"Expose USB devices to the Linux guest\" " +
+                    "(or set the usb_guest_exposure_enabled preference) first. The direct usb_* transfer tools work without it.",
+            )
+        }
         val requested = args.optString("deviceName").takeIf { it.isNotBlank() }
         val deviceName = requested ?: run {
             val devices = usbBroker.listDevices()

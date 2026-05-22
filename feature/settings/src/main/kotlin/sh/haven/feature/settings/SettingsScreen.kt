@@ -52,6 +52,7 @@ import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.LockReset
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.Reorder
+import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.material.icons.filled.ListAlt
 import androidx.compose.material.icons.filled.LightMode
@@ -606,6 +607,18 @@ fun SettingsScreen(
             subtitle = "Show every bottom-nav tab even when its category is empty",
             checked = alwaysShowAllTabs,
             onCheckedChange = viewModel::setAlwaysShowAllTabs,
+        )
+
+        // USB-to-guest is a privileged capability: once on, any app in the
+        // Linux guest can reach a USB device the agent attaches. Off by
+        // default; each attach still asks for consent on top of this.
+        val usbGuestExposure by viewModel.usbGuestExposureEnabled.collectAsState()
+        SettingsToggleItem(
+            icon = Icons.Filled.Usb,
+            title = "Expose USB devices to the Linux guest",
+            subtitle = "Let attached USB devices reach guest apps via the haven-usb shim. Each attach still asks for consent.",
+            checked = usbGuestExposure,
+            onCheckedChange = viewModel::setUsbGuestExposureEnabled,
         )
 
         }

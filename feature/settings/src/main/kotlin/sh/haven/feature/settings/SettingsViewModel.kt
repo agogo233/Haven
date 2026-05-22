@@ -163,6 +163,9 @@ class SettingsViewModel @Inject constructor(
     val alwaysShowAllTabs: StateFlow<Boolean> = preferencesRepository.alwaysShowAllTabs
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
+    val usbGuestExposureEnabled: StateFlow<Boolean> = preferencesRepository.usbGuestExposureEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     val verboseLoggingEnabled: StateFlow<Boolean> = preferencesRepository.verboseLoggingEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
@@ -384,6 +387,12 @@ class SettingsViewModel @Inject constructor(
     fun setConnectionLoggingEnabled(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.setConnectionLoggingEnabled(enabled)
+        }
+    }
+
+    fun setUsbGuestExposureEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setUsbGuestExposureEnabled(enabled)
         }
     }
 

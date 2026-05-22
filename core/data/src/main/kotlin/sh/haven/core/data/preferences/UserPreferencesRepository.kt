@@ -43,6 +43,7 @@ class UserPreferencesRepository @Inject constructor(
     private val keepScreenOnInTerminalKey = booleanPreferencesKey("keep_screen_on_in_terminal")
     private val connectionLoggingEnabledKey = booleanPreferencesKey("connection_logging_enabled")
     private val alwaysShowAllTabsKey = booleanPreferencesKey("always_show_all_tabs")
+    private val usbGuestExposureEnabledKey = booleanPreferencesKey("usb_guest_exposure_enabled")
     private val verboseLoggingEnabledKey = booleanPreferencesKey("verbose_logging_enabled")
     private val mouseInputEnabledKey = booleanPreferencesKey("mouse_input_enabled")
     private val mouseDragSelectsKey = booleanPreferencesKey("mouse_drag_selects")
@@ -180,6 +181,25 @@ class UserPreferencesRepository @Inject constructor(
     suspend fun setAlwaysShowAllTabs(enabled: Boolean) {
         dataStore.edit { prefs ->
             prefs[alwaysShowAllTabsKey] = enabled
+        }
+    }
+
+    /**
+     * Master opt-in for exposing the phone's USB devices to the proot Linux
+     * guest (the haven-usb proxy + shim). Default OFF: the per-call consent
+     * prompt still gates each attach, but this gives the user a single
+     * deliberate switch for the whole capability — guest USB lets *any* guest
+     * app reach the brokered device, so it stays off until explicitly enabled.
+     * Does NOT affect the direct agent USB tools (list/permission/transfer),
+     * which are consent-gated on their own.
+     */
+    val usbGuestExposureEnabled: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[usbGuestExposureEnabledKey] ?: false
+    }
+
+    suspend fun setUsbGuestExposureEnabled(enabled: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[usbGuestExposureEnabledKey] = enabled
         }
     }
 
