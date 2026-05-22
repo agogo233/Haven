@@ -12,6 +12,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.runBlocking
@@ -29,6 +30,7 @@ class HavenApp : Application(), Configuration.Provider {
     @Inject lateinit var workspaceShortcutManager: sh.haven.app.workspace.WorkspaceShortcutManager
     @Inject lateinit var workerFactory: HiltWorkerFactory
     @Inject lateinit var prootManager: sh.haven.core.local.ProotManager
+    @Inject lateinit var guestServiceManager: sh.haven.core.local.GuestServiceManager
     @Inject lateinit var sessionManagerRegistry: sh.haven.core.ssh.SessionManagerRegistry
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -86,6 +88,10 @@ class HavenApp : Application(), Configuration.Provider {
                 if (enabled) {
                     mcpServer.start()
                     advertiseEndpointToProot()
+                    // Relaunch supervised guest MCP servers (e.g. a KiCad MCP)
+                    // for the active distro before the tunnel comes up, so
+                    // establish() snapshots their ports into the forward set.
+                    guestServiceManager.startAutostart()
                     // Bring up the dedicated, headless reverse tunnel that
                     // keeps the loopback endpoint reachable off-device as
                     // the network roams. No-op when no endpoint profile is
@@ -109,6 +115,7 @@ class HavenApp : Application(), Configuration.Provider {
                 } else {
                     mcpTunnelManager.stop()
                     mcpServer.stop()
+                    guestServiceManager.stopAll()
                     removeEndpointFromProot()
                     // Stop the FGS only if nothing else is keeping it
                     // alive. hasActiveSessions now includes the MCP
@@ -142,6 +149,23 @@ class HavenApp : Application(), Configuration.Provider {
             .drop(1)
             .distinctUntilChanged()
             .onEach { mcpServer.setWireguardEnabled(it) }
+            .launchIn(appScope)
+
+        // Re-home the MCP reverse tunnel when the set of RUNNING guest services
+        // changes (e.g. one started/stopped via the MCP tools after the tunnel
+        // was already up), so its loopback port is multiplexed onto -R. drop(1)
+        // skips the initial replay — startup autostart is handled in the enable
+        // branch before the tunnel starts. No-op when the server isn't running.
+        guestServiceManager.services
+            .map { svcs ->
+                svcs.values
+                    .filter { it.state == sh.haven.core.local.GuestServiceManager.ServiceState.RUNNING }
+                    .map { it.spec.port }
+                    .toSortedSet()
+            }
+            .distinctUntilChanged()
+            .drop(1)
+            .onEach { if (mcpServer.isRunning) mcpTunnelManager.refreshForwards() }
             .launchIn(appScope)
 
         // Schedule the daily step-ca cert-renewal check (#133 phase 2b).

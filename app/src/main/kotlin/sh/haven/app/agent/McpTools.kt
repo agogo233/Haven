@@ -1302,6 +1302,74 @@ internal class McpTools(
             },
         ) { args -> runInProot(args) },
 
+        "register_guest_service" to ToolHandler(
+            description = "Register a long-lived helper process to run inside the ACTIVE distro's proot guest — typically an app-native MCP server (KiCad/FreeCAD/OpenSCAD) the agent drives for structured control. Haven supervises it: starts it (if autostart) when the MCP endpoint comes up, re-launches it after an app restart, and — when an MCP reverse-tunnel endpoint is configured — multiplexes its loopback `port` back to the remote MCP client alongside Haven's own endpoint (no adb forward needed). The registry is persisted per-distro. Returns the generated service id. Use start_guest_service to launch it now.",
+            inputSchema = JSONObject().apply {
+                put("type", "object")
+                put("properties", JSONObject().apply {
+                    put("label", JSONObject().apply {
+                        put("type", "string")
+                        put("description", "Human-readable name, e.g. \"KiCad MCP\".")
+                    })
+                    put("command", JSONObject().apply {
+                        put("type", "string")
+                        put("description", "Shell command run via /bin/sh -lc in the guest, e.g. 'cd /root/kicad-mcp && UV_LINK_MODE=copy uv run python http_server.py'. Should run in the foreground (Haven owns the process).")
+                    })
+                    put("port", JSONObject().apply {
+                        put("type", "integer")
+                        put("description", "Loopback TCP port the service listens on inside the guest (e.g. 8766). Multiplexed over the MCP reverse tunnel.")
+                    })
+                    put("autostart", JSONObject().apply {
+                        put("type", "boolean")
+                        put("description", "Re-launch automatically when Haven's MCP endpoint comes up / after app restart. Default true.")
+                    })
+                })
+                put("required", JSONArray().put("label").put("command").put("port"))
+            },
+            consentLevel = ConsentLevel.ONCE_PER_SESSION,
+            summarise = { args -> "Register guest service '${args.optString("label")}' (runs: ${args.optString("command").take(80)})" },
+        ) { args -> registerGuestService(args) },
+
+        "list_guest_services" to ToolHandler(
+            description = "List guest services registered on the active distro with their live state (STOPPED/STARTING/RUNNING/ERROR), command, port, autostart flag, and last error/output tail. Read-only.",
+            inputSchema = emptyObjectSchema(),
+        ) { _ -> listGuestServices() },
+
+        "start_guest_service" to ToolHandler(
+            description = "Start a registered guest service by id (no-op if already running). Returns its state.",
+            inputSchema = JSONObject().apply {
+                put("type", "object")
+                put("properties", JSONObject().apply {
+                    put("id", JSONObject().apply { put("type", "string"); put("description", "Service id from register_guest_service / list_guest_services.") })
+                })
+                put("required", JSONArray().put("id"))
+            },
+            consentLevel = ConsentLevel.ONCE_PER_SESSION,
+            summarise = { args -> "Start guest service ${args.optString("id")}" },
+        ) { args -> startGuestService(args) },
+
+        "stop_guest_service" to ToolHandler(
+            description = "Stop a running guest service by id (leaves it registered).",
+            inputSchema = JSONObject().apply {
+                put("type", "object")
+                put("properties", JSONObject().apply {
+                    put("id", JSONObject().apply { put("type", "string"); put("description", "Service id.") })
+                })
+                put("required", JSONArray().put("id"))
+            },
+        ) { args -> stopGuestService(args) },
+
+        "unregister_guest_service" to ToolHandler(
+            description = "Stop (if running) and remove a guest service from the registry by id.",
+            inputSchema = JSONObject().apply {
+                put("type", "object")
+                put("properties", JSONObject().apply {
+                    put("id", JSONObject().apply { put("type", "string"); put("description", "Service id.") })
+                })
+                put("required", JSONArray().put("id"))
+            },
+        ) { args -> unregisterGuestService(args) },
+
         "set_terminal_font_from_url" to ToolHandler(
             description = "Download a font from a URL, validate it, install it as Haven's terminal font (replacing any prior custom font), and return the saved path. The URL may point at a .ttf/.otf, or a .zip containing them (a Regular face is auto-extracted) — useful for repos like Maple/Nerd Fonts that ship only zips (#123, #177). WOFF/WOFF2 web fonts are rejected (Android can't render them). Requires the URL to be reachable from the device — use a tunneled URL (via add_port_forward LOCAL) to expose a workstation HTTP server back through the existing SSH session.",
             inputSchema = JSONObject().apply {
@@ -5188,6 +5256,86 @@ internal class McpTools(
             put("exitCode", code)
             put("output", tail(out))
         }
+    }
+
+    private fun guestServiceToJson(
+        inst: sh.haven.core.local.GuestServiceManager.GuestServiceInstance?,
+        spec: sh.haven.core.local.GuestServiceManager.GuestServiceSpec,
+    ): JSONObject = JSONObject().apply {
+        put("id", spec.id)
+        put("label", spec.label)
+        put("command", spec.command)
+        put("port", spec.port)
+        put("autostart", spec.autostart)
+        put("state", inst?.state?.name ?: "STOPPED")
+        inst?.errorMessage?.let { put("errorMessage", it) }
+    }
+
+    private fun registerGuestService(args: JSONObject): JSONObject {
+        val label = args.optString("label").takeIf { it.isNotBlank() }
+            ?: throw McpError(-32602, "label is required")
+        val command = args.optString("command").takeIf { it.isNotBlank() }
+            ?: throw McpError(-32602, "command is required")
+        val port = args.optInt("port", 0).takeIf { it in 1..65535 }
+            ?: throw McpError(-32602, "port must be 1..65535")
+        val autostart = if (args.has("autostart")) args.optBoolean("autostart") else true
+        val gsm = localSessionManager.guestServiceManager
+        val id = "gsvc-${System.currentTimeMillis().toString(36)}"
+        val spec = sh.haven.core.local.GuestServiceManager.GuestServiceSpec(
+            id = id, label = label, command = command, port = port, autostart = autostart,
+        )
+        gsm.register(spec)
+        return JSONObject().apply {
+            put("id", id)
+            put("activeDistroId", prootManager.activeDistroId)
+            put("status", "registered")
+            put("hint", "call start_guest_service to launch it now")
+        }
+    }
+
+    private fun listGuestServices(): JSONObject {
+        val gsm = localSessionManager.guestServiceManager
+        val running = gsm.services.value
+        val arr = JSONArray()
+        gsm.registered().forEach { spec -> arr.put(guestServiceToJson(running[spec.id], spec)) }
+        return JSONObject().apply {
+            put("activeDistroId", prootManager.activeDistroId)
+            put("count", arr.length())
+            put("services", arr)
+        }
+    }
+
+    private fun guestSpecOrThrow(id: String): sh.haven.core.local.GuestServiceManager.GuestServiceSpec =
+        localSessionManager.guestServiceManager.registered().firstOrNull { it.id == id }
+            ?: throw McpError(-32602, "Unknown guest service id: $id")
+
+    private fun startGuestService(args: JSONObject): JSONObject {
+        val id = args.optString("id").takeIf { it.isNotBlank() }
+            ?: throw McpError(-32602, "id is required")
+        val spec = guestSpecOrThrow(id)
+        val gsm = localSessionManager.guestServiceManager
+        gsm.start(id)
+        // The MCP reverse tunnel re-homes to pick up the new service's port
+        // via HavenApp's guest-service observer (no-op when no tunnel endpoint
+        // is configured).
+        return guestServiceToJson(gsm.services.value[id], spec).apply { put("status", "started") }
+    }
+
+    private fun stopGuestService(args: JSONObject): JSONObject {
+        val id = args.optString("id").takeIf { it.isNotBlank() }
+            ?: throw McpError(-32602, "id is required")
+        val spec = guestSpecOrThrow(id)
+        localSessionManager.guestServiceManager.stop(id)
+        return guestServiceToJson(localSessionManager.guestServiceManager.services.value[id], spec)
+            .apply { put("status", "stopped") }
+    }
+
+    private fun unregisterGuestService(args: JSONObject): JSONObject {
+        val id = args.optString("id").takeIf { it.isNotBlank() }
+            ?: throw McpError(-32602, "id is required")
+        guestSpecOrThrow(id)
+        localSessionManager.guestServiceManager.unregister(id)
+        return JSONObject().apply { put("id", id); put("status", "unregistered") }
     }
 
     private suspend fun getProotInstallLog(args: JSONObject): JSONObject {

@@ -31,6 +31,7 @@ class LocalSessionManager @Inject constructor(
     @ApplicationContext private val context: Context,
     val prootManager: ProotManager,
     val desktopManager: DesktopManager,
+    val guestServiceManager: GuestServiceManager,
     private val preferences: UserPreferencesRepository,
 ) {
 

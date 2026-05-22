@@ -15,6 +15,7 @@ import sh.haven.core.data.preferences.UserPreferencesRepository
 import sh.haven.core.data.repository.ConnectionLogRepository
 import sh.haven.core.data.repository.ConnectionRepository
 import sh.haven.core.data.repository.SshKeyRepository
+import sh.haven.core.local.GuestServiceManager
 import sh.haven.core.ssh.ConnectionConfig
 import sh.haven.core.ssh.HostKeyResult
 import sh.haven.core.ssh.HostKeyVerifier
@@ -62,6 +63,7 @@ class McpTunnelManager @Inject constructor(
     private val preferencesRepository: UserPreferencesRepository,
     private val hostKeyVerifier: HostKeyVerifier,
     private val connectionLogRepository: ConnectionLogRepository,
+    private val guestServiceManager: GuestServiceManager,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val lock = Any()
@@ -124,10 +126,60 @@ class McpTunnelManager @Inject constructor(
 
     fun stop() = synchronized(lock) { stopLocked() }
 
+    /**
+     * Multiplex any RUNNING guest-service ports that aren't already forwarded
+     * onto the live tunnel session, without a reconnect. Called when a guest
+     * service starts after the tunnel is already up. Additive only: a stopped
+     * service's forward lingers (harmless — it just refuses connections) until
+     * the next reconnect rebuilds the set from scratch in [establish].
+     */
+    fun refreshForwards() = synchronized(lock) {
+        val sid = sessionId ?: return
+        val s = sshSessionManager.getSession(sid) ?: return
+        if (s.status != SshSessionManager.SessionState.Status.CONNECTED) return
+        val already = s.activeForwards
+            .filter { it.type == SshSessionManager.PortForwardType.REMOTE }
+            .map { it.bindPort }
+            .toSet()
+        val toAdd = guestServiceManager.runningPorts().distinct()
+            .filter { it != currentPort && it !in already }
+            .map { p ->
+                SshSessionManager.PortForwardInfo(
+                    ruleId = "guest-mcp-$p",
+                    type = SshSessionManager.PortForwardType.REMOTE,
+                    bindAddress = "127.0.0.1",
+                    bindPort = p,
+                    targetHost = "127.0.0.1",
+                    targetPort = p,
+                    critical = false,
+                )
+            }
+        if (toAdd.isNotEmpty()) {
+            sshSessionManager.applyPortForwards(sid, toAdd)
+            Log.i(TAG, "Multiplexed guest ports onto MCP tunnel: ${toAdd.map { it.bindPort }}")
+        }
+    }
+
     private fun stopLocked() {
         job?.cancel()
         job = null
-        sessionId?.let { sshSessionManager.removeSession(it) }
+        sessionId?.let { sid ->
+            // Best-effort: release the server-side `-R` binds now, so a clean
+            // re-enable / restart doesn't hit a stale bind. (A server only
+            // reaps a dead client's forward on its own ClientAliveInterval, so
+            // without this an immediate re-enable races the reaper. A hard
+            // process kill skips this path and still relies on that reaper.)
+            runCatching {
+                val s = sshSessionManager.getSession(sid)
+                val client = s?.client
+                if (client != null && client.isConnected) {
+                    s.activeForwards
+                        .filter { it.type == SshSessionManager.PortForwardType.REMOTE }
+                        .forEach { fwd -> runCatching { client.delPortForwardingR(fwd.bindPort) } }
+                }
+            }
+            sshSessionManager.removeSession(sid)
+        }
         sessionId = null
         currentPort = 0
     }
@@ -203,21 +255,51 @@ class McpTunnelManager @Inject constructor(
             sshSessionManager.storeConnectionConfig(sid, config, SessionManager.NONE)
             sshSessionManager.updateStatus(sid, SshSessionManager.SessionState.Status.CONNECTED)
 
-            val forward = SshSessionManager.PortForwardInfo(
-                ruleId = "mcp-reverse-tunnel",
-                type = SshSessionManager.PortForwardType.REMOTE,
-                bindAddress = "127.0.0.1",
-                bindPort = mcpPort,
-                targetHost = "127.0.0.1",
-                targetPort = mcpPort,
-                critical = true,
+            // The critical forward: Haven's own MCP endpoint. A bind failure
+            // here fails the whole (re)connect and retries.
+            val forwards = mutableListOf(
+                SshSessionManager.PortForwardInfo(
+                    ruleId = "mcp-reverse-tunnel",
+                    type = SshSessionManager.PortForwardType.REMOTE,
+                    bindAddress = "127.0.0.1",
+                    bindPort = mcpPort,
+                    targetHost = "127.0.0.1",
+                    targetPort = mcpPort,
+                    critical = true,
+                ),
             )
-            if (!sshSessionManager.applyPortForwards(sid, listOf(forward))) {
+            // Multiplex any running guest MCP servers (e.g. a KiCad MCP) onto
+            // the same headless session as **non-critical** forwards: a guest
+            // crash or stale guest bind must never tear down Haven's own
+            // tunnel. They ride the same activeForwards re-apply on reconnect,
+            // so they inherit the tunnel's roam/restart durability for free.
+            guestServiceManager.runningPorts().distinct()
+                .filter { it != mcpPort }
+                .forEach { p ->
+                    forwards.add(
+                        SshSessionManager.PortForwardInfo(
+                            ruleId = "guest-mcp-$p",
+                            type = SshSessionManager.PortForwardType.REMOTE,
+                            bindAddress = "127.0.0.1",
+                            bindPort = p,
+                            targetHost = "127.0.0.1",
+                            targetPort = p,
+                            critical = false,
+                        ),
+                    )
+                }
+            if (!sshSessionManager.applyPortForwards(sid, forwards)) {
                 Log.w(TAG, "MCP -R $mcpPort failed to bind on ${profile.label} (stale bind?) — retrying")
                 cleanup(sid)
                 return Outcome.RETRY
             }
-            Log.i(TAG, "MCP reverse tunnel up: -R $mcpPort via ${profile.label}")
+            val guestPorts = forwards.drop(1).map { it.bindPort }
+            Log.i(
+                TAG,
+                "MCP reverse tunnel up: -R $mcpPort" +
+                    (if (guestPorts.isNotEmpty()) " (+guest ${guestPorts.joinToString(",")})" else "") +
+                    " via ${profile.label}",
+            )
             connectionLogRepository.logEvent(
                 profile.id, ConnectionLog.Status.CONNECTED,
                 details = "MCP reverse tunnel (-R $mcpPort)",
