@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import sh.haven.core.data.db.entities.ConnectionLog
@@ -367,6 +368,11 @@ class DesktopViewModel @Inject constructor(
             .map { list -> list.items.sortedByDescending { it.lastUsed } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    /** Def ids currently launching, so the row's Launch button shows a spinner
+     *  during the (~10–15s) cage-kiosk bring-up. */
+    private val _launchingIds = MutableStateFlow<Set<String>>(emptySet())
+    val launchingIds: StateFlow<Set<String>> = _launchingIds.asStateFlow()
+
     /**
      * Launch a saved app window into the present_media overlay — the same
      * surface the agent's `present_app` uses. Mirrors `McpTools.presentApp`:
@@ -375,19 +381,24 @@ class DesktopViewModel @Inject constructor(
      */
     fun launchAppWindow(def: AppWindowDef) {
         viewModelScope.launch(Dispatchers.IO) {
-            val session = desktopManager.startAppWindow(def.command)
-            if (session.state == DesktopManager.DesktopState.RUNNING) {
-                presentationManager.presentAppWindow(
-                    host = "127.0.0.1",
-                    port = session.vncPort,
-                    sessionId = session.sessionId,
-                    caption = def.label,
-                )
-                preferencesRepository.upsertAppWindowDef(def.label, def.command, def.createdBy)
-            } else {
-                _userMessages.emit(
-                    "Couldn't launch ${def.label}: ${session.errorMessage ?: "failed to start"}",
-                )
+            _launchingIds.update { it + def.id }
+            try {
+                val session = desktopManager.startAppWindow(def.command)
+                if (session.state == DesktopManager.DesktopState.RUNNING) {
+                    presentationManager.presentAppWindow(
+                        host = "127.0.0.1",
+                        port = session.vncPort,
+                        sessionId = session.sessionId,
+                        caption = def.label,
+                    )
+                    preferencesRepository.upsertAppWindowDef(def.label, def.command, def.createdBy)
+                } else {
+                    _userMessages.emit(
+                        "Couldn't launch ${def.label}: ${session.errorMessage ?: "failed to start"}",
+                    )
+                }
+            } finally {
+                _launchingIds.update { it - def.id }
             }
         }
     }

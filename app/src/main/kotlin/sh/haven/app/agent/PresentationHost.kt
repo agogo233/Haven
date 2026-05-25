@@ -1,5 +1,8 @@
 package sh.haven.app.agent
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.graphics.BitmapFactory
 import android.media.MediaPlayer
 import androidx.compose.foundation.Image
@@ -42,20 +45,14 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
-import android.graphics.Bitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import sh.haven.app.MainActivity
 import sh.haven.core.data.agent.AgentPresentationManager
 import sh.haven.core.data.agent.PresentedMedia
 import sh.haven.core.data.agent.PresentedMediaKind
 import sh.haven.core.local.DesktopManager
-import sh.haven.core.vnc.ColorDepth
-import sh.haven.core.vnc.VncClient
-import sh.haven.core.vnc.VncConfig
 import sh.haven.feature.vnc.VncSessionContent
 import java.io.File
 import javax.inject.Inject
@@ -68,20 +65,40 @@ import javax.inject.Inject
 internal class PresentationHostViewModel @Inject constructor(
     private val manager: AgentPresentationManager,
     private val desktopManager: DesktopManager,
+    private val connectionStore: AppWindowConnectionStore,
+    private val pipController: PipController,
 ) : ViewModel() {
     val pending: StateFlow<List<PresentedMedia>> = manager.pending
 
     /**
+     * The live VNC controller for an app window, owned by the store (so it
+     * survives the overlay→PiP→overlay transition). Null if the media lacks
+     * connection details.
+     */
+    fun controllerFor(media: PresentedMedia): AppWindowVncController? {
+        val host = media.host ?: return null
+        val port = media.port ?: return null
+        val sid = media.sessionId ?: return null
+        return connectionStore.controllerFor(sid, host, port)
+    }
+
+    /** Tell the PiP layer which app window (if any) is currently on screen. */
+    fun setActiveAppWindow(media: PresentedMedia?) = pipController.setActiveAppWindow(media)
+
+    /**
      * Dismiss a presented item. Removes it from the queue immediately (UI
-     * stays responsive); for an APP_WINDOW it also stops the backing
-     * cage-kiosk session off-thread (DesktopManager.stopAppWindow kills the
-     * compositor/wayvnc tree). core:data's manager can't do this itself —
-     * it doesn't depend on core:local — so the teardown lives here.
+     * stays responsive); for an APP_WINDOW it also clears the PiP active
+     * window, releases the VNC connection from the store, and stops the
+     * backing cage-kiosk session off-thread. core:data's manager can't do
+     * the last two — it doesn't depend on core:local / core:vnc — so the
+     * teardown lives here.
      */
     fun dismiss(media: PresentedMedia) {
         manager.dismiss(media.id)
         if (media.kind == PresentedMediaKind.APP_WINDOW) {
+            pipController.setActiveAppWindow(null)
             media.sessionId?.let { sid ->
+                connectionStore.release(sid)
                 viewModelScope.launch(Dispatchers.IO) { desktopManager.stopAppWindow(sid) }
             }
         }
@@ -122,6 +139,11 @@ internal fun PresentationHost(viewModel: PresentationHostViewModel = hiltViewMod
             runCatching { sheetState.hide() }
             displayed = null
         }
+        // Tell the PiP layer which app window is on screen (for auto-enter +
+        // the floating view). Only an APP_WINDOW is PiP-eligible; cleared
+        // when nothing is shown. NOT cleared on dispose — an overlay→PiP
+        // transition disposes this host but the window must stay PiP-active.
+        viewModel.setActiveAppWindow(u?.takeIf { it.kind == PresentedMediaKind.APP_WINDOW })
     }
     val current = displayed ?: return
 
@@ -142,8 +164,14 @@ internal fun PresentationHost(viewModel: PresentationHostViewModel = hiltViewMod
             when (current.kind) {
                 PresentedMediaKind.IMAGE -> ImageContent(current)
                 PresentedMediaKind.AUDIO -> AudioContent(current)
-                PresentedMediaKind.APP_WINDOW ->
-                    AppWindowContent(current, onDismiss = { viewModel.dismiss(current) })
+                PresentedMediaKind.APP_WINDOW -> {
+                    val controller = viewModel.controllerFor(current)
+                    if (controller != null) {
+                        AppWindowContent(controller, onDismiss = { viewModel.dismiss(current) })
+                    } else {
+                        Text("App window is missing its connection details.")
+                    }
+                }
             }
 
             Spacer(Modifier.height(24.dp))
@@ -151,6 +179,14 @@ internal fun PresentationHost(viewModel: PresentationHostViewModel = hiltViewMod
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
             ) {
+                if (current.kind == PresentedMediaKind.APP_WINDOW) {
+                    val context = LocalContext.current
+                    OutlinedButton(onClick = {
+                        (context.findActivity() as? MainActivity)?.enterPipForAppWindow()
+                    }) {
+                        Text("PiP")
+                    }
+                }
                 Button(onClick = { viewModel.dismiss(current) }) {
                     Text("Dismiss")
                 }
@@ -249,25 +285,24 @@ private fun AudioContent(media: PresentedMedia) {
     }
 }
 
+/** Unwrap a Compose [Context] to its hosting [Activity], or null. */
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
 /**
  * A live single-app window: embeds the reusable [VncSessionContent] (which
- * already does pinch-zoom / pan / drag / fullscreen) bound to a private
- * [AppWindowVncController] that connects to the cage-kiosk wayvnc at
- * host:port. Constrained to a fixed height in the sheet; the viewer's own
- * fullscreen toggle promotes it. [onDismiss] tears the window down.
+ * already does pinch-zoom / pan / drag / fullscreen) bound to a
+ * store-owned [AppWindowVncController] connected to the cage-kiosk wayvnc.
+ * The controller lifecycle is the PresentedMedia (via [AppWindowConnectionStore]),
+ * not this composable — so it survives an overlay→PiP→overlay round-trip.
+ * Constrained to a fixed height in the sheet; the viewer's own fullscreen
+ * toggle promotes it. [onDismiss] tears the window down.
  */
 @Composable
-private fun AppWindowContent(media: PresentedMedia, onDismiss: () -> Unit) {
-    val host = media.host
-    val port = media.port
-    if (host == null || port == null) {
-        Text("App window is missing its connection details.")
-        return
-    }
-    val controller = remember(media.id) { AppWindowVncController() }
-    LaunchedEffect(media.id) { controller.connect(host, port) }
-    DisposableEffect(controller) { onDispose { controller.stop() } }
-
+private fun AppWindowContent(controller: AppWindowVncController, onDismiss: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -293,83 +328,5 @@ private fun AppWindowContent(media: PresentedMedia, onDismiss: () -> Unit) {
             // viewer reserves 2 fingers for remote scroll, zoom on 3).
             twoFingerZoom = true,
         )
-    }
-}
-
-/**
- * Owns a [VncClient] for an APP_WINDOW overlay: connects to the cage-kiosk
- * wayvnc at host:port and exposes frame/connected/error for
- * [VncSessionContent]. All client I/O runs on a private IO scope — socket
- * sends and the [VncClient.typeText] pacing must never touch the main thread.
- */
-private class AppWindowVncController {
-    val frame = MutableStateFlow<Bitmap?>(null)
-    val connected = MutableStateFlow(false)
-    val error = MutableStateFlow<String?>(null)
-
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    @Volatile
-    private var client: VncClient? = null
-
-    fun connect(host: String, port: Int) {
-        scope.launch {
-            val config = VncConfig().apply {
-                colorDepth = ColorDepth.BPP_24_TRUE
-                shared = true
-                onScreenUpdate = { bmp -> frame.value = bmp }
-                onError = { e ->
-                    error.value = e.message ?: "VNC connection error"
-                    connected.value = false
-                }
-            }
-            val c = VncClient(config)
-            client = c
-            try {
-                c.start(host, port)
-                connected.value = true
-            } catch (e: Exception) {
-                error.value = e.message ?: "Failed to connect to the app window"
-            }
-        }
-    }
-
-    fun click(x: Int, y: Int, button: Int) {
-        scope.launch { client?.moveMouse(x, y); client?.click(button) }
-    }
-
-    fun dragStart(x: Int, y: Int) {
-        scope.launch { client?.moveMouse(x, y); client?.updateMouseButton(1, true) }
-    }
-
-    fun drag(x: Int, y: Int) {
-        scope.launch { client?.moveMouse(x, y) }
-    }
-
-    fun dragEnd() {
-        scope.launch { client?.updateMouseButton(1, false) }
-    }
-
-    fun scroll(up: Boolean) {
-        scope.launch { client?.click(if (up) 4 else 5) }
-    }
-
-    fun key(sym: Int, down: Boolean) {
-        scope.launch { client?.updateKey(sym, down) }
-    }
-
-    fun typeText(s: String) {
-        scope.launch { client?.typeText(s) }
-    }
-
-    fun stop() {
-        connected.value = false
-        val c = client
-        client = null
-        // VncClient.stop() joins its event-loop threads (up to ~1s) — never
-        // on the main thread. Run it off-thread, then cancel the IO scope.
-        Thread {
-            runCatching { c?.stop() }
-            scope.cancel()
-        }.apply { isDaemon = true }.start()
     }
 }

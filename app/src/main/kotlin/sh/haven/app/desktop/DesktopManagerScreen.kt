@@ -98,6 +98,7 @@ fun DesktopManagerScreen(viewModel: DesktopViewModel = hiltViewModel()) {
     }
     var showAddAppDialog by remember { mutableStateOf(false) }
     val appWindowDefs by viewModel.appWindowDefs.collectAsState()
+    val launchingIds by viewModel.launchingIds.collectAsState()
 
     Column(
         modifier = Modifier
@@ -127,6 +128,7 @@ fun DesktopManagerScreen(viewModel: DesktopViewModel = hiltViewModel()) {
 
         AppWindowsSection(
             defs = appWindowDefs,
+            launchingIds = launchingIds,
             onLaunch = { viewModel.launchAppWindow(it) },
             onDelete = { viewModel.deleteAppWindow(it.id) },
             onAdd = { showAddAppDialog = true },
@@ -177,6 +179,7 @@ fun DesktopManagerScreen(viewModel: DesktopViewModel = hiltViewModel()) {
 @Composable
 private fun AppWindowsSection(
     defs: List<AppWindowDef>,
+    launchingIds: Set<String>,
     onLaunch: (AppWindowDef) -> Unit,
     onDelete: (AppWindowDef) -> Unit,
     onAdd: () -> Unit,
@@ -225,8 +228,17 @@ private fun AppWindowsSection(
                                 maxLines = 1,
                             )
                         }
-                        IconButton(onClick = { onLaunch(def) }) {
-                            Icon(Icons.Filled.PlayArrow, contentDescription = "Launch ${def.label}")
+                        if (def.id in launchingIds) {
+                            Box(
+                                modifier = Modifier.size(48.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                            }
+                        } else {
+                            IconButton(onClick = { onLaunch(def) }) {
+                                Icon(Icons.Filled.PlayArrow, contentDescription = "Launch ${def.label}")
+                            }
                         }
                         IconButton(onClick = { onDelete(def) }) {
                             Icon(Icons.Filled.Delete, contentDescription = "Delete ${def.label}")
