@@ -1,0 +1,5 @@
+Desktop-over-SSH recovery and a couple of agent improvements.
+
+- A desktop that loses its connection (e.g. no VNC server running) now shows inline Retry and Close buttons, so you no longer have to long-press the tab to get out. Retry re-establishes the SSH tunnel and reconnects.
+- VNC/RDP/SMB over an SSH tunnel: if the SSH login can't use a saved key, you're now prompted for a password instead of dead-ending with a cryptic "Auth cancel" message, and a wrong password simply re-asks. Cancelling no longer leaves an SSH session open.
+- New update_connection tool on the agent/MCP API to edit an existing connection's fields.
