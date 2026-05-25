@@ -963,8 +963,11 @@ private fun RepeatingButton(
         }
     }
 
-    FilledTonalButton(
-        onClick = {}, // handled by pointerInteropFilter
+    // A tonal Surface instead of FilledTonalButton: Material's button forces a
+    // 58dp minimum width internally, so every key — even "|" or "~" — wasted
+    // that much horizontal space. A Surface sizes to its content + padding, so
+    // each key is only as wide as it needs to be (#184 follow-up).
+    Surface(
         modifier = modifier.pointerInteropFilter { motionEvent ->
             when (motionEvent.action) {
                 android.view.MotionEvent.ACTION_DOWN -> {
@@ -983,9 +986,16 @@ private fun RepeatingButton(
                 else -> false
             }
         },
-        contentPadding = contentPadding,
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
     ) {
-        content()
+        Box(
+            modifier = Modifier.padding(contentPadding),
+            contentAlignment = Alignment.Center,
+        ) {
+            content()
+        }
     }
 }
 
@@ -1022,22 +1032,31 @@ private fun ToolbarTextButton(label: String, onClick: () -> Unit) {
 
 @Composable
 private fun ToolbarToggleButton(label: String, active: Boolean, onClick: () -> Unit) {
-    FilledTonalButton(
+    // Compact Surface (content-width) matching RepeatingButton, so the modifier
+    // toggles aren't padded to Material's 58dp minimum (#184 follow-up).
+    Surface(
         onClick = onClick,
         modifier = Modifier
             .padding(horizontal = 1.dp)
             .height(32.dp),
-        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-        colors = if (active) {
-            ButtonDefaults.filledTonalButtonColors(
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-            )
+        shape = RoundedCornerShape(8.dp),
+        color = if (active) {
+            MaterialTheme.colorScheme.primary
         } else {
-            ButtonDefaults.filledTonalButtonColors()
+            MaterialTheme.colorScheme.secondaryContainer
+        },
+        contentColor = if (active) {
+            MaterialTheme.colorScheme.onPrimary
+        } else {
+            MaterialTheme.colorScheme.onSecondaryContainer
         },
     ) {
-        Text(label, fontSize = 11.sp, lineHeight = 11.sp)
+        Box(
+            modifier = Modifier.padding(horizontal = 8.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(label, fontSize = 11.sp, lineHeight = 11.sp)
+        }
     }
 }
 
