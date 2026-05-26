@@ -1142,7 +1142,28 @@ private fun ReorderToolbarContent(
     showVncIcon: Boolean = false,
 ) {
     val rows = remember(layout) {
-        layout.rows.map { it.toMutableStateList() }
+        // Pin the leading icon keys to match the live render's fixed 2-column
+        // grid (col 1 = keyboard / VNC, col 2 = Attach / Voice). In edit mode the
+        // done-✓ button replaces KEYBOARD *in place* and the VNC icon is prepended
+        // to row 2 outside the data, so the data order must be:
+        //   row 1: [KEYBOARD, ATTACH, …]  -> [done, attach, …]
+        //   row 2: [VOICE,    …]          -> [VNC,  voice,  …]
+        // so Attach (row 1) and Voice (row 2) both land at column 2 and align.
+        fun MutableList<ToolbarItem>.pinToFront(key: ToolbarKey, target: Int) {
+            val idx = indexOfFirst { it is ToolbarItem.BuiltIn && it.key == key }
+            if (idx >= 0 && idx != target) add(target.coerceAtMost(size), removeAt(idx))
+        }
+        layout.rows.mapIndexed { i, row ->
+            val list = row.toMutableList()
+            when (i) {
+                0 -> {
+                    list.pinToFront(ToolbarKey.KEYBOARD, 0)
+                    list.pinToFront(ToolbarKey.ATTACH, 1)
+                }
+                1 -> list.pinToFront(ToolbarKey.VOICE_KEYBOARD, 0)
+            }
+            list.toMutableStateList()
+        }
     }
 
     fun saveAndExit() {
