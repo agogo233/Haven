@@ -1,0 +1,4 @@
+Terminal scrolling: two-finger swipe.
+
+- A two-finger vertical swipe now scrolls Haven's own terminal scrollback — distinct from a one-finger swipe, which scrolls the remote app (e.g. tmux/zellij/vim with mouse on). So: one finger = the remote side, two fingers = Haven's side.
+- Pinch (two fingers apart/together) still zooms the font.
