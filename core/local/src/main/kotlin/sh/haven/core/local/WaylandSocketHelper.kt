@@ -53,6 +53,12 @@ object WaylandSocketHelper {
             ) {
                 Log.d(TAG, "Shizuku binder received")
                 shizukuBinderAlive = true
+                // The first privileged exec in a fresh app process pays a
+                // binder/shell cold-start (newProcess spins up a shell over
+                // the Shizuku binder for the first time). Pay it here, off
+                // the critical path, so the first real read_logcat /
+                // expose_adb / pm install after a (re)connect isn't slow.
+                warmUpShizukuShell()
             }
 
             registerListener(
@@ -70,6 +76,45 @@ object WaylandSocketHelper {
         } catch (e: Exception) {
             Log.w(TAG, "Shizuku listener registration failed: ${e.javaClass.simpleName}: ${e.message}")
         }
+    }
+
+    @Volatile
+    private var shizukuWarmedUp = false
+
+    /**
+     * Fire a throwaway `true` through the Shizuku shell on a daemon thread
+     * to pre-spawn the shell process / prime the binder transaction, so the
+     * first user-visible privileged command doesn't eat the cold-start.
+     *
+     * Runs at most once per process (the warmed shell path stays primed for
+     * the binder's lifetime). No-ops without permission — newProcess would
+     * throw — and swallows everything, since a failed warm-up just means the
+     * first real call pays the cost it would have paid anyway.
+     *
+     * Called from the binder-received callback, which may be on the binder
+     * thread, so the actual exec is pushed to a background thread to avoid
+     * blocking Shizuku's dispatch.
+     */
+    private fun warmUpShizukuShell() {
+        if (shizukuWarmedUp) return
+        shizukuWarmedUp = true
+        Thread({
+            try {
+                if (!hasShizukuPermission()) {
+                    // Re-arm so a later grant still gets a warm-up.
+                    shizukuWarmedUp = false
+                    return@Thread
+                }
+                val process = newShizukuProcess("true")
+                process.inputStream.bufferedReader().use { it.readText() }
+                process.errorStream.bufferedReader().use { it.readText() }
+                process.waitFor()
+                Log.d(TAG, "Shizuku shell warmed up")
+            } catch (e: Exception) {
+                Log.d(TAG, "Shizuku warm-up skipped: ${e.message}")
+                shizukuWarmedUp = false
+            }
+        }, "shizuku-warmup").apply { isDaemon = true }.start()
     }
 
     /**
