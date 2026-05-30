@@ -1,0 +1,9 @@
+Terminal: full-screen apps fit above the soft keyboard
+
+Full-screen terminal apps (tmux, vim, less, htop) now reflow to fit when the soft keyboard opens, so their status line and bottom rows stay visible above the keyboard instead of being hidden behind it. Plain shell prompts are unchanged — they still hold their place when the keyboard toggles.
+
+Agent endpoint: post notifications, read logcat, and a faster Shizuku first call
+
+The MCP agent endpoint gains two tester tools. raise_notification posts a real system notification on a dedicated, mutable "agent test notifications" channel, so an agent can exercise notification-listener / wake / DND apps without a second device. read_logcat reads the system log via Shizuku (no extra permission granted to Haven itself), for observing app network calls, crashes, and lifecycle.
+
+Shizuku: the shell is now warmed up as soon as the binder connects (and on a later permission grant), so the first privileged action after launch no longer pays a cold-start delay.
