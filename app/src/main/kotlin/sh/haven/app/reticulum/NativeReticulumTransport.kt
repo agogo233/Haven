@@ -16,8 +16,10 @@ import network.reticulum.interfaces.toRef
 import network.reticulum.transport.RichAnnounceHandler
 import network.reticulum.transport.Transport
 import sh.haven.core.reticulum.DiscoveredDestination
+import sh.haven.core.reticulum.ReticulumExecSession
 import sh.haven.core.reticulum.ReticulumTransport
 import sh.haven.core.reticulum.RnshShellSession
+import tech.torlando.rnsh.session.ExecSession
 import tech.torlando.rnsh.session.InitiatorSession
 import tech.torlando.rnsh.session.ShellSession
 import java.io.File
@@ -150,21 +152,7 @@ class NativeReticulumTransport @Inject constructor() : ReticulumTransport {
     ): RnshShellSession = withContext(Dispatchers.IO) {
         check(initialised) { "Reticulum not initialised" }
 
-        val destHash = hexToBytes(destinationHash)
-
-        // Wait for path
-        Log.d(TAG, "Requesting path to $destinationHash...")
-        Transport.requestPath(destHash)
-        val deadline = System.currentTimeMillis() + 20_000
-        while (!Transport.hasPath(destHash)) {
-            if (System.currentTimeMillis() > deadline) {
-                throw RuntimeException(
-                    "Could not resolve destination $destinationHash within 20s"
-                )
-            }
-            Thread.sleep(250)
-        }
-        Log.d(TAG, "Path found for $destinationHash")
+        val destHash = awaitPath(destinationHash)
 
         // Create and execute rnsh session
         val session = InitiatorSession(
@@ -179,6 +167,48 @@ class NativeReticulumTransport @Inject constructor() : ReticulumTransport {
             sessionId = UUID.randomUUID().toString(),
             shell = shell,
         )
+    }
+
+    override suspend fun execCommand(
+        destinationHash: String,
+        command: List<String>,
+    ): ReticulumExecSession = withContext(Dispatchers.IO) {
+        check(initialised) { "Reticulum not initialised" }
+
+        val destHash = awaitPath(destinationHash)
+
+        // Each exec runs over its own Link to the same destination.
+        val session = InitiatorSession(
+            destinationHash = destHash,
+            clientIdentity = clientIdentity,
+        )
+        val exec = session.executeCommand(command = command)
+        Log.d(TAG, "Exec opened to $destinationHash: ${command.firstOrNull()}")
+        NativeExecSession(exec)
+    }
+
+    /**
+     * Resolve a path to [destinationHash], blocking up to 20s. Returns the
+     * destination hash bytes. Reuses any already-known path (e.g. from an
+     * open shell session to the same destination).
+     */
+    private fun awaitPath(destinationHash: String): ByteArray {
+        val destHash = hexToBytes(destinationHash)
+        if (Transport.hasPath(destHash)) return destHash
+
+        Log.d(TAG, "Requesting path to $destinationHash...")
+        Transport.requestPath(destHash)
+        val deadline = System.currentTimeMillis() + 20_000
+        while (!Transport.hasPath(destHash)) {
+            if (System.currentTimeMillis() > deadline) {
+                throw RuntimeException(
+                    "Could not resolve destination $destinationHash within 20s"
+                )
+            }
+            Thread.sleep(250)
+        }
+        Log.d(TAG, "Path found for $destinationHash")
+        return destHash
     }
 
     override suspend fun requestPath(destinationHashHex: String): Boolean =
@@ -242,4 +272,20 @@ private class NativeShellSession(
     override fun close() {
         shell.close()
     }
+}
+
+/**
+ * Exec session backed by rnsh-kt's native [ExecSession].
+ */
+private class NativeExecSession(
+    private val exec: ExecSession,
+) : ReticulumExecSession {
+
+    override val stdout: Flow<ByteArray> = exec.stdout
+    override val stderr: Flow<ByteArray> = exec.stderr
+    override val exitCode: CompletableDeferred<Int> = exec.exitCode
+
+    override suspend fun writeStdin(data: ByteArray) = exec.writeStdin(data)
+    override suspend fun closeStdin() = exec.closeStdin()
+    override fun close() = exec.close()
 }

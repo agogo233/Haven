@@ -148,6 +148,7 @@ class SftpViewModel @Inject constructor(
     private val etSessionManager: EtSessionManager,
     private val smbSessionManager: SmbSessionManager,
     private val rcloneSessionManager: RcloneSessionManager,
+    private val reticulumSessionManager: sh.haven.core.reticulum.ReticulumSessionManager,
     private val rcloneClient: RcloneClient,
     private val repository: ConnectionRepository,
     private val connectionLogRepository: ConnectionLogRepository,
@@ -1069,7 +1070,14 @@ class SftpViewModel @Inject constructor(
                 .map { it.profileId }
                 .toSet()
 
-            val connectedProfileIds = sshProfileIds + moshProfileIds + etProfileIds + smbProfileIds + rcloneProfileIds
+            // Collect profile IDs from Reticulum/rnsh sessions — file ops run
+            // over the command-exec substrate (ReticulumFileBackend).
+            val reticulumProfileIds = reticulumSessionManager.sessions.value.values
+                .filter { it.status == sh.haven.core.reticulum.ReticulumSessionManager.SessionState.Status.CONNECTED }
+                .map { it.profileId }
+                .toSet()
+
+            val connectedProfileIds = sshProfileIds + moshProfileIds + etProfileIds + smbProfileIds + rcloneProfileIds + reticulumProfileIds
 
             val profiles = withContext(Dispatchers.IO) { repository.getAll() }
             val remoteProfiles = profiles.filter { it.id in connectedProfileIds }
@@ -1128,6 +1136,7 @@ class SftpViewModel @Inject constructor(
         val isLocal = profileId == "local"
         val isSmb = !isLocal && smbSessionManager.isProfileConnected(profileId)
         val isRclone = !isLocal && rcloneSessionManager.isProfileConnected(profileId)
+        val isReticulum = !isLocal && reticulumSessionManager.isProfileConnected(profileId)
         _isLocalProfile.value = isLocal
         _isSmbProfile.value = isSmb
         _isRcloneProfile.value = isRclone
@@ -1159,6 +1168,7 @@ class SftpViewModel @Inject constructor(
                 isSmb -> {
                     activeSmbClient = smbSessionManager.getClientForProfile(profileId)
                 }
+                isReticulum -> { /* backend resolved on demand via TransportSelector */ }
                 else -> {
                     viewModelScope.launch(Dispatchers.IO) {
                         sftpSession = sessionManager.openSftpSession(profileId)
@@ -1173,6 +1183,7 @@ class SftpViewModel @Inject constructor(
                 isLocal -> loadDirectoryEntries("/")
                 isRclone -> openRcloneAndList(profileId)
                 isSmb -> openSmbAndList(profileId)
+                isReticulum -> loadDirectoryEntries("/")
                 else -> openSftpAndList(profileId, "/")
             }
         }

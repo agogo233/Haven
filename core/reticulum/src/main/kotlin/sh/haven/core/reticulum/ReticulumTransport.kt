@@ -59,6 +59,25 @@ interface ReticulumTransport {
         cols: Int = 80,
     ): RnshShellSession
 
+    /**
+     * Run a single command on an rnsh destination in pipe mode (no PTY),
+     * over its own Link, with stdout and stderr demultiplexed and an exit
+     * code. The substrate for file transfer and port forwarding over the
+     * mesh — see [ReticulumExecSession].
+     *
+     * Reticulum must already be initialised (typically by an open shell
+     * [openSession] to the same destination); the path is reused.
+     *
+     * @param destinationHash Hex-encoded rnsh destination hash
+     * @param command argv to run; use `listOf("sh", "-c", script)` for shell
+     *   features (redirection, pipes, globbing)
+     * @throws Exception if resolution, Link, or handshake fails
+     */
+    suspend fun execCommand(
+        destinationHash: String,
+        command: List<String>,
+    ): ReticulumExecSession
+
     /** Discovered rnsh destinations, sorted by hop count. */
     val discoveredDestinations: StateFlow<List<DiscoveredDestination>>
 
@@ -97,6 +116,41 @@ interface RnshShellSession : AutoCloseable {
     suspend fun resize(rows: Int, cols: Int)
 
     /** Close the session. */
+    override fun close()
+}
+
+/**
+ * A live rnsh command-exec session: a single remote command run in pipe
+ * mode (no PTY) over its own Link, with stdout and stderr demultiplexed and
+ * an exit code.
+ *
+ * stdout/stderr are reliable, single-consumer flows that complete when the
+ * command exits; bytes are not dropped (unlike the terminal's lossy output).
+ */
+interface ReticulumExecSession : AutoCloseable {
+    /** Stdout bytes from the remote process. Single consumer; completes on exit. */
+    val stdout: Flow<ByteArray>
+
+    /** Stderr bytes from the remote process. Single consumer; completes on exit. */
+    val stderr: Flow<ByteArray>
+
+    /**
+     * Completes with the exit code the rnsh listener reports.
+     *
+     * Caveat: some rnsh listeners (incl. current markqvist/rnsh) report 0
+     * for every non-signal exit (a `& 0xff` waitpid-masking bug), so this
+     * value cannot distinguish success from failure. Callers needing a
+     * reliable status should embed `$?` in the command output.
+     */
+    val exitCode: CompletableDeferred<Int>
+
+    /** Write bytes to the remote process's stdin. */
+    suspend fun writeStdin(data: ByteArray)
+
+    /** Signal EOF on the remote process's stdin. */
+    suspend fun closeStdin()
+
+    /** Tear down the session and close the underlying Link. */
     override fun close()
 }
 

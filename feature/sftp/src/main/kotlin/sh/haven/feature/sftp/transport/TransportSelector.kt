@@ -7,6 +7,8 @@ import sh.haven.core.data.db.entities.ConnectionProfile
 import sh.haven.core.data.repository.ConnectionRepository
 import sh.haven.core.rclone.RcloneClient
 import sh.haven.core.rclone.RcloneSessionManager
+import sh.haven.core.reticulum.ReticulumSessionManager
+import sh.haven.core.reticulum.ReticulumTransport
 import sh.haven.core.smb.SmbSessionManager
 import sh.haven.core.ssh.SshSessionManager
 import java.io.File
@@ -38,6 +40,8 @@ class TransportSelector @Inject constructor(
     private val sessionManager: SshSessionManager,
     private val smbSessionManager: SmbSessionManager,
     private val rcloneSessionManager: RcloneSessionManager,
+    private val reticulumSessionManager: ReticulumSessionManager,
+    private val reticulumTransport: ReticulumTransport,
     private val rcloneClient: RcloneClient,
     private val connectionRepository: ConnectionRepository,
     @ApplicationContext private val appContext: Context,
@@ -113,6 +117,12 @@ class TransportSelector @Inject constructor(
         if (rcloneSessionManager.isProfileConnected(profileId)) {
             val remote = rcloneSessionManager.getRemoteNameForProfile(profileId) ?: return null
             return FileBackendResolution(RcloneFileBackend(rcloneClient, remote, appContext))
+        }
+        if (reticulumSessionManager.isProfileConnected(profileId)) {
+            val destHash = reticulumSessionManager.getSessionsForProfile(profileId)
+                .firstOrNull { it.status == ReticulumSessionManager.SessionState.Status.CONNECTED }
+                ?.destinationHash ?: return null
+            return FileBackendResolution(ReticulumFileBackend(reticulumTransport, destHash))
         }
         val profile = connectionRepository.getById(profileId) ?: return null
         val resolution = resolve(profile) ?: return null

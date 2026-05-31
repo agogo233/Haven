@@ -23,6 +23,7 @@ private const val TAG = "ReticulumSessionManager"
 @Singleton
 class ReticulumSessionManager @Inject constructor(
     private val transport: ReticulumTransport,
+    private val forwardServer: ReticulumForwardServer,
 ) {
 
     data class SessionState(
@@ -175,6 +176,10 @@ class ReticulumSessionManager @Inject constructor(
         val session = _sessions.value[sessionId] ?: return
         _sessions.update { it - sessionId }
         shellSessions.remove(sessionId)
+        // Tear down any port forwards if this was the profile's last session.
+        if (_sessions.value.values.none { it.profileId == session.profileId }) {
+            forwardServer.stopAllForProfile(session.profileId)
+        }
         scope.launch {
             try {
                 session.reticulumSession?.close()
@@ -187,6 +192,7 @@ class ReticulumSessionManager @Inject constructor(
     fun removeAllSessionsForProfile(profileId: String) {
         val toRemove = _sessions.value.values.filter { it.profileId == profileId }
         _sessions.update { map -> map.filterValues { it.profileId != profileId } }
+        forwardServer.stopAllForProfile(profileId)
         scope.launch {
             toRemove.forEach { session ->
                 try {
@@ -202,6 +208,7 @@ class ReticulumSessionManager @Inject constructor(
         val snapshot = _sessions.value.values.toList()
         _sessions.update { emptyMap() }
         shellSessions.clear()
+        forwardServer.stopAll()
         scope.launch {
             snapshot.forEach { session ->
                 try {
