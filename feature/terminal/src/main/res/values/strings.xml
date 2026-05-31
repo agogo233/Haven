@@ -39,6 +39,9 @@
     <string name="terminal_copy_last_output">Copy last output</string>
     <string name="terminal_copied_output">Copied output (%d chars)</string>
     <string name="terminal_no_command_output">No command output found (needs shell integration)</string>
+    <string name="terminal_link_open_failed">No app can open this link</string>
+    <string name="terminal_link_scheme_blocked">Blocked link (unsupported scheme)</string>
+    <string name="terminal_local_vnc_failed">Couldn\'t start the local desktop</string>
     <string name="terminal_search">Search</string>
 
     <!-- New tab errors -->

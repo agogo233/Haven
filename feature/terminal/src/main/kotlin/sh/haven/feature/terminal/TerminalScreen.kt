@@ -1051,8 +1051,28 @@ fun TerminalScreen(
                                     viewModel.setFontSize(newSize.value.toInt())
                                 },
                                 onHyperlinkClick = { url ->
+                                    // OSC 8 link targets come straight from untrusted server
+                                    // output. Only launch a vetted scheme, and never let a
+                                    // missing handler crash the app. (#208 finding 16)
                                     val finalUrl = if (url.contains("://")) url else "https://$url"
-                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(finalUrl)))
+                                    val scheme = Uri.parse(finalUrl).scheme?.lowercase()
+                                    if (scheme in setOf("http", "https", "mailto", "tel")) {
+                                        try {
+                                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(finalUrl)))
+                                        } catch (_: android.content.ActivityNotFoundException) {
+                                            android.widget.Toast.makeText(
+                                                context,
+                                                context.getString(R.string.terminal_link_open_failed),
+                                                android.widget.Toast.LENGTH_LONG,
+                                            ).show()
+                                        }
+                                    } else {
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            context.getString(R.string.terminal_link_scheme_blocked),
+                                            android.widget.Toast.LENGTH_LONG,
+                                        ).show()
+                                    }
                                 },
                                 gestureCallback = gestureCallback,
                                 keyboardMode = keyboardMode,
@@ -1113,12 +1133,25 @@ fun TerminalScreen(
                             if (!localVncLoading) {
                                 localVncLoading = true
                                 coroutineScope.launch {
-                                    viewModel.ensureLocalVncProfile()
-                                    viewModel.startLocalVncServer()
-                                    kotlinx.coroutines.delay(4000)
-                                    val pwd = viewModel.getLocalVncPassword()
-                                    localVncLoading = false
-                                    onNavigateToVnc("localhost", 5901, null, pwd, false, null, "BPP_24_TRUE")
+                                    // try/finally so a failure (e.g. keystore decrypt,
+                                    // server start) can't leave the spinner stuck true and
+                                    // lock the button out forever. (#208 finding 17)
+                                    try {
+                                        viewModel.ensureLocalVncProfile()
+                                        viewModel.startLocalVncServer()
+                                        kotlinx.coroutines.delay(4000)
+                                        val pwd = viewModel.getLocalVncPassword()
+                                        onNavigateToVnc("localhost", 5901, null, pwd, false, null, "BPP_24_TRUE")
+                                    } catch (e: Exception) {
+                                        android.util.Log.e("TerminalScreen", "local VNC launch failed", e)
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            context.getString(R.string.terminal_local_vnc_failed),
+                                            android.widget.Toast.LENGTH_LONG,
+                                        ).show()
+                                    } finally {
+                                        localVncLoading = false
+                                    }
                                 }
                             }
                         }} else null,
@@ -1318,7 +1351,7 @@ private fun sgrMouseWheel(scrollUp: Boolean, col: Int, row: Int): ByteArray {
  */
 private fun sgrMouseMotion(button: Int, col: Int, row: Int): ByteArray {
     val code = button or 32
-    return "[<$code;$col;${row}M".toByteArray()
+    return "\u001b[<$code;$col;${row}M".toByteArray()
 }
 
 private fun sgrMouseButton(button: Int, col: Int, row: Int, pressed: Boolean): ByteArray {

@@ -402,7 +402,19 @@ class TerminalViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Cached `verboseLoggingEnabled` so [createRecorderIfEnabled] — called from
+     * syncSessions on the main thread during connection churn — doesn't do a
+     * blocking DataStore read on the UI thread (cold reads were an ANR source).
+     * (#208 finding 14)
+     */
+    @Volatile
+    private var verboseLoggingCached = false
+
     init {
+        viewModelScope.launch {
+            preferencesRepository.verboseLoggingEnabled.collect { verboseLoggingCached = it }
+        }
         // Cross-tab agent verbs: focus an existing tab (focus_terminal_session)
         // or open a new one for a profile (workspace launcher's
         // OpenTerminalSession). The matching pager switch happens in
@@ -465,8 +477,7 @@ class TerminalViewModel @Inject constructor(
     }
 
     private fun createRecorderIfEnabled(sessionId: String): TerminalRecorder? {
-        val enabled = runBlocking(Dispatchers.IO) { preferencesRepository.verboseLoggingEnabled.first() }
-        if (!enabled) return null
+        if (!verboseLoggingCached) return null
         val dir = java.io.File(appContext.filesDir, "terminal-recordings").apply { mkdirs() }
         val ts = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US).format(java.util.Date())
         val file = java.io.File(dir, "session-${ts}-${sessionId.take(8)}.bin")
@@ -2096,7 +2107,10 @@ class TerminalViewModel @Inject constructor(
 
     fun killRemoteSession(sessionName: String) {
         val sel = _newTabSessionPicker.value ?: return
-        val killCmd = sel.manager.killCommand?.invoke(sessionName) ?: return
+        // Session names come from server-controlled `tmux ls`/`screen -ls` output
+        // and a free-form rename field; sanitize before they reach the `sh -c '…'`
+        // command template, mirroring buildSessionManagerCommand. (#208 finding 5)
+        val killCmd = sel.manager.killCommand?.invoke(sanitizeSessionName(sessionName)) ?: return
         val session = sessionManager.getSession(sel.sessionId) ?: return
 
         viewModelScope.launch {
@@ -2128,7 +2142,11 @@ class TerminalViewModel @Inject constructor(
 
     fun renameRemoteSession(oldName: String, newName: String) {
         val sel = _newTabSessionPicker.value ?: return
-        val renameCmd = sel.manager.renameCommand?.invoke(oldName, newName) ?: return
+        // Sanitize both names before they hit the rename command template — the
+        // new name is free-form user input, the old name is server-listed. (#208 #5)
+        val renameCmd = sel.manager.renameCommand?.invoke(
+            sanitizeSessionName(oldName), sanitizeSessionName(newName),
+        ) ?: return
         val session = sessionManager.getSession(sel.sessionId) ?: return
 
         viewModelScope.launch {
@@ -2190,7 +2208,10 @@ class TerminalViewModel @Inject constructor(
     fun renameAttachedSession(sessionId: String, newName: String) {
         val s = sessionManager.getSession(sessionId) ?: return
         val oldName = s.chosenSessionName?.takeIf { it.isNotBlank() } ?: return
-        val cmd = s.sessionManager.renameCommand?.invoke(oldName, newName) ?: return
+        // Sanitize before the rename template; newName is free-form input. (#208 #5)
+        val cmd = s.sessionManager.renameCommand?.invoke(
+            sanitizeSessionName(oldName), sanitizeSessionName(newName),
+        ) ?: return
         viewModelScope.launch {
             try {
                 val result = withContext(Dispatchers.IO) { s.client.execCommand(cmd) }

@@ -493,4 +493,49 @@ class OscHandlerTest {
         assertEquals("https://example.com", hyperlinkResults[0])
         assertNull(hyperlinkResults[1])
     }
+
+    // ========================================================================
+    // Buffer-overflow regressions (#208 findings 6 & 18)
+    // A malicious server can stream a handled-OSC payload (or a long OSC
+    // number) across many small read chunks so the accumulating buffer far
+    // exceeds the per-chunk output buffer, then send a terminator that flushes
+    // it. Pre-fix the unchecked arraycopy threw ArrayIndexOutOfBounds on the
+    // reader thread, killing the session output pipeline.
+    // ========================================================================
+
+    @Test
+    fun `large OSC 52 payload streamed in chunks then aborted does not overflow`() {
+        val payloadSize = 100_000
+        // ESC ] 5 2 ; — enter PAYLOAD state for handled OSC 52.
+        handler.process(byteArrayOf(0x1B, ']'.code.toByte(), '5'.code.toByte(), '2'.code.toByte(), ';'.code.toByte()), 0, 5)
+        val chunk = ByteArray(1024) { 'A'.code.toByte() }
+        var streamed = 0
+        while (streamed < payloadSize) {
+            val n = minOf(chunk.size, payloadSize - streamed)
+            handler.process(chunk, 0, n)
+            streamed += n
+        }
+        // ESC followed by a non-backslash aborts the sequence → flushAll() copies
+        // the ~100 KB payloadBuf into the small chunk-sized outputBuf.
+        handler.process(byteArrayOf(0x1B, 'X'.code.toByte()), 0, 2)
+        // No exception thrown == fixed; the aborted payload is flushed to output.
+        assertTrue(handler.outputLen >= payloadSize)
+    }
+
+    @Test
+    fun `long OSC number streamed in chunks then invalid char does not overflow`() {
+        // ESC ] → OSC_BRACKET.
+        handler.process(byteArrayOf(0x1B, ']'.code.toByte()), 0, 2)
+        val total = 100_000
+        val digits = ByteArray(1024) { '9'.code.toByte() }
+        var streamed = 0
+        while (streamed < total) {
+            val n = minOf(digits.size, total - streamed)
+            handler.process(digits, 0, n)
+            streamed += n
+        }
+        // A non-digit, non-';' char flushes the giant seqBuf into outputBuf.
+        handler.process(byteArrayOf('Z'.code.toByte()), 0, 1)
+        assertTrue(handler.outputLen >= total)
+    }
 }

@@ -245,6 +245,24 @@ class OscHandler(
         outputBuf[outputLen++] = b
     }
 
+    /**
+     * Grow [outputBuf] so it can hold [additional] more bytes past [outputLen].
+     * The per-[process] sizing only budgets for the current chunk plus a small
+     * fixed overhead, but [seqBuf]/[payloadBuf] accumulate across calls (an OSC
+     * number streamed digit-by-digit, or an OSC-52 payload up to 1 MB split
+     * across reads). Flushing those via an unchecked arraycopy into the
+     * chunk-sized buffer would overflow it — a remote-triggered crash. Grow
+     * first. (#208 findings 6 & 18)
+     */
+    private fun ensureOutputCapacity(additional: Int) {
+        val needed = outputLen + additional
+        if (outputBuf.size < needed) {
+            var newSize = outputBuf.size * 2
+            if (newSize < needed) newSize = needed
+            outputBuf = outputBuf.copyOf(newSize)
+        }
+    }
+
     private fun processPayloadByte(b: Byte, u: Int) {
         when {
             u == 0x07 -> {
@@ -338,6 +356,7 @@ class OscHandler(
     }
 
     private fun flushSeqBuf() {
+        ensureOutputCapacity(seqBuf.size())
         seqBuf.copyInto(outputBuf, outputLen)
         outputLen += seqBuf.size()
         seqBuf.reset()
@@ -345,10 +364,12 @@ class OscHandler(
     }
 
     private fun flushAll() {
+        ensureOutputCapacity(seqBuf.size())
         seqBuf.copyInto(outputBuf, outputLen)
         outputLen += seqBuf.size()
         seqBuf.reset()
 
+        ensureOutputCapacity(payloadBuf.size())
         payloadBuf.copyInto(outputBuf, outputLen)
         outputLen += payloadBuf.size()
         payloadBuf.reset()
