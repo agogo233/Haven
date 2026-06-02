@@ -85,11 +85,16 @@ The buildserver no longer pre-installs NDKs in its Docker image — `fdroidserve
 | Tool | F-Droid pin | Our CI |
 |---|---|---|
 | NDK | `r29` (`29.0.14206865`) — declared per-module in `core/local`, `termlib/lib` | `sdkmanager "ndk;29.0.14206865"` in the composite action |
-| Rust | `rustup default 1.85.0` | `rustup default 1.85.0` |
+| Rust | `rustup default 1.85.0` (overridden by the toml below for the rdp build) | `rustup default 1.89.0`, and `rdp-kotlin/rust/rust-toolchain.toml` `channel = "1.89.0"` (not `stable`). The crate-scoped toml governs the only Rust build, so F-Droid's `1.85.0` default also compiles rdp at 1.89.0. **Floor: 1.87** (ironrdp-graphics 0.7.0 uses `integer_sign_cast`). Align F-Droid's default to 1.89.0 in a follow-up. |
 | `cargo-ndk` | `3.5.4` | `3.5.4` |
 | CMake | `3.31.6` | `3.31.6` |
-| `gomobile` / `gobind` | `@latest` | `@latest` (cached, refreshes via key bump) |
+| `gomobile` / `gobind` | `@latest` | **pinned** `@v0.0.0-20251021151156-188f512ec823` (matches `rclone-android/go/go.sum`); bump in lockstep with the go.sum entry + the `gomobile-cache` key |
 | Go | `1.26` (implicit — matches our `actions/setup-go`) | `1.26` |
+
+> Supply-chain hardening (#211) pinned our CI's `gomobile`/`gobind` to the
+> `go.sum` pseudo-version instead of `@latest`. The F-Droid recipe still uses
+> `@latest`; a follow-up should pin it there too so both build the binding
+> generator from the same commit.
 
 Things Haven's CI does **not** exercise but F-Droid does:
 

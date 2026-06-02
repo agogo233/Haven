@@ -1,7 +1,10 @@
 [toolchain]
 # Pinned (not "stable") so the compiler that builds the shipped RDP .so is
-# deterministic and matches CI (`rustup default 1.85.0`) + the F-Droid recipe.
-# A directory-scoped rust-toolchain.toml otherwise overrides `rustup default`,
-# which would let `stable` float here. Bump in lockstep with both.
-channel = "1.85.0"
+# deterministic. A directory-scoped rust-toolchain.toml overrides the global
+# `rustup default`, so "stable" here would float per-runner/per-day. 1.89.0 is
+# the floor that compiles our IronRDP deps: ironrdp-graphics 0.7.0 uses
+# `integer_sign_cast` (stabilised in 1.87), so anything < 1.87 hard-errors
+# (E0658, rust-lang/rust#125882). Keep CI's `rustup default` (setup-toolchain)
+# on the same version; raise this when a cargo bump needs a newer compiler.
+channel = "1.89.0"
 targets = ["aarch64-linux-android", "x86_64-linux-android"]
