@@ -693,7 +693,7 @@ internal class McpTools(
         ) { _ -> readClipboard() },
 
         "get_preference" to ToolHandler(
-            description = "Read a Haven user preference by key. Whitelisted keys: terminal_scrollback_rows, terminal_tap_to_position_cursor, terminal_font_size, terminal_color_scheme, mouse_input_enabled, terminal_right_click, mcp_tunnel_endpoint_profile_id, mcp_wireguard_enabled, usb_guest_exposure_enabled. Returns { key, value } where value's type follows the preference's type (int / boolean / string).",
+            description = "Read a Haven user preference by key. Whitelisted keys: terminal_scrollback_rows, terminal_tap_to_position_cursor, terminal_font_size, terminal_color_scheme, terminal_auto_switch_scheme, terminal_light_color_scheme, terminal_dark_color_scheme, mouse_input_enabled, terminal_right_click, mcp_tunnel_endpoint_profile_id, mcp_wireguard_enabled, mcp_lan_bind_enabled, mcp_wireguard_tunnel_config_id, usb_guest_exposure_enabled. Returns { key, value } where value's type follows the preference's type (int / boolean / string). Colour-scheme values are TerminalColorScheme enum names.",
             inputSchema = JSONObject().apply {
                 put("type", "object")
                 put("properties", JSONObject().apply {
@@ -902,7 +902,7 @@ internal class McpTools(
         ) { args -> writeClipboard(args) },
 
         "set_preference" to ToolHandler(
-            description = "Write a Haven user preference. Whitelisted keys (and their types): terminal_scrollback_rows (int 100..25000), terminal_tap_to_position_cursor (bool), terminal_font_size (int 8..32), mouse_input_enabled (bool), terminal_right_click (bool), mcp_tunnel_endpoint_profile_id (string SSH profile id, empty to clear), mcp_wireguard_enabled (bool), usb_guest_exposure_enabled (bool — master gate for usb_attach_to_guest). Returns { key, value }.",
+            description = "Write a Haven user preference. Whitelisted keys (and their types): terminal_scrollback_rows (int 100..25000), terminal_tap_to_position_cursor (bool), terminal_font_size (int 8..32), mouse_input_enabled (bool), terminal_right_click (bool), terminal_color_scheme (string — a TerminalColorScheme enum name, e.g. HAVEN, DRACULA, NORD, GRUVBOX; case-insensitive), terminal_auto_switch_scheme (bool — when true the active scheme follows system light/dark via the light/dark keys), terminal_light_color_scheme (string scheme name), terminal_dark_color_scheme (string scheme name), mcp_tunnel_endpoint_profile_id (string SSH profile id, empty to clear), mcp_wireguard_enabled (bool), mcp_lan_bind_enabled (bool — also bind the device Wi-Fi/LAN address for direct same-network reach), mcp_wireguard_tunnel_config_id (string tunnel config id the MCP server keeps up as its WG carrier, empty to clear), usb_guest_exposure_enabled (bool — master gate for usb_attach_to_guest). Returns { key, value }.",
             inputSchema = JSONObject().apply {
                 put("type", "object")
                 put("properties", JSONObject().apply {
@@ -3821,12 +3821,30 @@ internal class McpTools(
         "terminal_font_size",
         "mouse_input_enabled",
         "terminal_right_click",
+        // Terminal colour scheme group (#139/#165). Values are
+        // TerminalColorScheme enum names (e.g. DRACULA, NORD). When
+        // auto-switch is on the active scheme follows the system light/dark
+        // mode via the light/dark keys; otherwise the manual key is used.
+        // MCP-drivable so the scheme-persistence path (#209) is testable
+        // without driving the Settings UI.
+        "terminal_color_scheme",
+        "terminal_auto_switch_scheme",
+        "terminal_light_color_scheme",
+        "terminal_dark_color_scheme",
         // SSH profile id the MCP server tunnels its loopback listener back
         // to (dedicated headless `-R`). Empty string clears it. See
         // McpTunnelManager.
         "mcp_tunnel_endpoint_profile_id",
         // Whether the MCP server also binds on the active WireGuard tunnel.
         "mcp_wireguard_enabled",
+        // Whether the MCP server also binds the device's Wi-Fi/LAN address
+        // (direct same-network reach, gated by pairing). MCP-drivable so the
+        // transport-robustness path is testable without the Settings UI.
+        "mcp_lan_bind_enabled",
+        // Tunnel config id of the WireGuard tunnel the MCP server actively
+        // keeps up as its carrier (empty string clears it → attach-to-first
+        // -live behaviour).
+        "mcp_wireguard_tunnel_config_id",
         // Master opt-in for exposing USB devices to the proot guest (gates
         // usb_attach_to_guest). MCP-drivable so integration tests can flip it.
         "usb_guest_exposure_enabled",
@@ -3845,8 +3863,14 @@ internal class McpTools(
             "terminal_font_size" -> preferencesRepository.terminalFontSize.first()
             "mouse_input_enabled" -> preferencesRepository.mouseInputEnabled.first()
             "terminal_right_click" -> preferencesRepository.terminalRightClick.first()
+            "terminal_color_scheme" -> preferencesRepository.terminalColorScheme.first().name
+            "terminal_auto_switch_scheme" -> preferencesRepository.terminalAutoSwitchScheme.first()
+            "terminal_light_color_scheme" -> preferencesRepository.terminalLightColorScheme.first().name
+            "terminal_dark_color_scheme" -> preferencesRepository.terminalDarkColorScheme.first().name
             "mcp_tunnel_endpoint_profile_id" -> preferencesRepository.mcpTunnelEndpointProfileId.first() ?: ""
             "mcp_wireguard_enabled" -> preferencesRepository.mcpWireguardEnabled.first()
+            "mcp_lan_bind_enabled" -> preferencesRepository.mcpLanBindEnabled.first()
+            "mcp_wireguard_tunnel_config_id" -> preferencesRepository.mcpWireguardTunnelConfigId.first() ?: ""
             "usb_guest_exposure_enabled" -> preferencesRepository.usbGuestExposureEnabled.first()
             else -> throw McpError(-32602, "Preference $key is not in the whitelist")
         }
@@ -3881,15 +3905,37 @@ internal class McpTools(
                 ?: throw McpError(-32602, "value must be true/false for $key, got \"$rawValue\"")
             else -> throw McpError(-32602, "value must be a boolean for $key, got ${rawValue?.javaClass?.simpleName}")
         }
+        // Parse a TerminalColorScheme enum name (case-insensitive). Reject
+        // unknown names rather than silently defaulting to HAVEN — a caller
+        // that fat-fingers the scheme should hear about it, not have its
+        // setting silently dropped.
+        fun coerceScheme(): UserPreferencesRepository.TerminalColorScheme {
+            val name = (rawValue as? String)
+                ?: throw McpError(-32602, "value must be a scheme name string for $key, got ${rawValue?.javaClass?.simpleName}")
+            return UserPreferencesRepository.TerminalColorScheme.entries
+                .find { it.name.equals(name, ignoreCase = true) }
+                ?: throw McpError(
+                    -32602,
+                    "Unknown colour scheme \"$name\" for $key. Valid: " +
+                        UserPreferencesRepository.TerminalColorScheme.entries.joinToString(", ") { it.name },
+                )
+        }
         when (key) {
             "terminal_scrollback_rows" -> preferencesRepository.setTerminalScrollbackRows(coerceInt())
             "terminal_font_size" -> preferencesRepository.setTerminalFontSize(coerceInt())
             "terminal_tap_to_position_cursor" -> preferencesRepository.setTerminalTapToPositionCursor(coerceBool())
             "mouse_input_enabled" -> preferencesRepository.setMouseInputEnabled(coerceBool())
             "terminal_right_click" -> preferencesRepository.setTerminalRightClick(coerceBool())
+            "terminal_color_scheme" -> preferencesRepository.setTerminalColorScheme(coerceScheme())
+            "terminal_auto_switch_scheme" -> preferencesRepository.setTerminalAutoSwitchScheme(coerceBool())
+            "terminal_light_color_scheme" -> preferencesRepository.setTerminalLightColorScheme(coerceScheme())
+            "terminal_dark_color_scheme" -> preferencesRepository.setTerminalDarkColorScheme(coerceScheme())
             "mcp_tunnel_endpoint_profile_id" ->
                 preferencesRepository.setMcpTunnelEndpointProfileId((rawValue as? String)?.ifBlank { null })
             "mcp_wireguard_enabled" -> preferencesRepository.setMcpWireguardEnabled(coerceBool())
+            "mcp_lan_bind_enabled" -> preferencesRepository.setMcpLanBindEnabled(coerceBool())
+            "mcp_wireguard_tunnel_config_id" ->
+                preferencesRepository.setMcpWireguardTunnelConfigId((rawValue as? String)?.ifBlank { null })
             "usb_guest_exposure_enabled" -> preferencesRepository.setUsbGuestExposureEnabled(coerceBool())
         }
         return JSONObject().apply {
