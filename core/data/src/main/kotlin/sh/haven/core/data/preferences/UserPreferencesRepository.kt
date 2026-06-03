@@ -99,6 +99,12 @@ class UserPreferencesRepository @Inject constructor(
     // via the pairing prompt on first connect. Empty by default; the
     // McpServer rejects any initialize from a name not in this set.
     private val mcpAllowedClientsKey = stringSetPreferencesKey("mcp_allowed_clients")
+    // MCP clients the user has opted into auto-approval for — per-call
+    // consent prompts are skipped for any name in this set. A persistent,
+    // Settings-managed counterpart to the session-only "Allow all from X
+    // until restart" checkbox. Empty by default; must always be a subset
+    // of mcpAllowedClients (only a paired client can be auto-approved).
+    private val mcpBypassConsentClientsKey = stringSetPreferencesKey("mcp_bypass_consent_clients")
     // Profile id of the SSH connection the MCP server tunnels its
     // loopback listener back to (a dedicated, headless `-R` reverse
     // forward). Null = no dedicated tunnel; the endpoint is then only
@@ -681,12 +687,48 @@ class UserPreferencesRepository @Inject constructor(
     suspend fun removeMcpAllowedClient(name: String) {
         dataStore.edit { prefs ->
             prefs[mcpAllowedClientsKey] = (prefs[mcpAllowedClientsKey] ?: emptySet()) - name
+            // Un-pairing revokes any standing auto-approval too — a client
+            // that has to re-pair must re-earn the bypass.
+            prefs[mcpBypassConsentClientsKey] = (prefs[mcpBypassConsentClientsKey] ?: emptySet()) - name
         }
     }
 
     suspend fun clearMcpAllowedClients() {
         dataStore.edit { prefs ->
             prefs.remove(mcpAllowedClientsKey)
+            prefs.remove(mcpBypassConsentClientsKey)
+        }
+    }
+
+    /**
+     * Clients the user has opted into auto-approval for (Settings →
+     * Agent endpoint → Paired clients → "Skip approval prompts"). Tool
+     * calls from a name in this set bypass the per-call consent sheet.
+     * Empty default — every paired client still prompts until the user
+     * explicitly opts it in. The persistent sibling of the consent
+     * sheet's session-only "Allow all from X until restart" checkbox.
+     */
+    val mcpBypassConsentClients: Flow<Set<String>> = dataStore.data.map { prefs ->
+        prefs[mcpBypassConsentClientsKey] ?: emptySet()
+    }
+
+    /**
+     * Enable/disable persistent auto-approval for a paired client. A
+     * blank name is ignored. Enabling a name not in [mcpAllowedClients]
+     * is harmless — the dispatch path only consults this for clients
+     * that already passed the pairing gate.
+     */
+    suspend fun setMcpClientConsentBypass(name: String, enabled: Boolean) {
+        if (name.isBlank()) return
+        dataStore.edit { prefs ->
+            val current = prefs[mcpBypassConsentClientsKey] ?: emptySet()
+            prefs[mcpBypassConsentClientsKey] = if (enabled) current + name else current - name
+        }
+    }
+
+    suspend fun clearMcpBypassConsentClients() {
+        dataStore.edit { prefs ->
+            prefs.remove(mcpBypassConsentClientsKey)
         }
     }
 

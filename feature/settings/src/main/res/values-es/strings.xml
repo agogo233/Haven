@@ -359,4 +359,16 @@
     <string name="settings_ime_flag_no_extract_ui_detail">IME_FLAG_NO_EXTRACT_UI — evita que la interfaz de IME en pantalla completa aparezca en horizontal.</string>
     <string name="settings_ime_flag_no_learning_title">Bloquear aprendizaje del IME</string>
     <string name="settings_ime_flag_no_learning_detail">IME_FLAG_NO_PERSONALIZED_LEARNING — privacidad: el banco de palabras del IME ignora el texto escrito. Lo suficientemente fuerte en Gboard para ocultar también el micrófono.</string>
+    <string name="settings_paired_clients_title">Clientes MCP emparejados</string>
+    <string name="settings_paired_clients_subtitle">Revisa los clientes emparejados, omite las solicitudes por cliente o desempareja</string>
+    <string name="settings_paired_clients_screen_title">Clientes MCP emparejados</string>
+    <string name="settings_paired_clients_empty">Aún no hay clientes MCP emparejados. Un cliente aparece aquí después de que apruebes su solicitud de conexión.</string>
+    <string name="settings_paired_clients_bypass_label">Omitir solicitudes de aprobación</string>
+    <string name="settings_paired_clients_bypass_on">Aprueba automáticamente cada llamada de este cliente, incluidas las destructivas.</string>
+    <string name="settings_paired_clients_bypass_off">Cada llamada destructiva sigue pidiendo consentimiento (predeterminado).</string>
+    <string name="settings_paired_clients_cd_unpair">Desemparejar cliente</string>
+    <string name="settings_paired_clients_unpair_title">¿Desemparejar \'%1$s\'?</string>
+    <string name="settings_paired_clients_unpair_message">Tendrá que volver a aprobarse la próxima vez que se conecte, y se revoca cualquier aprobación automática.</string>
+    <string name="settings_paired_clients_unpair_confirm">Desemparejar</string>
+    <string name="settings_paired_clients_unpaired_toast">\'%1$s\' desemparejado</string>
 </resources>

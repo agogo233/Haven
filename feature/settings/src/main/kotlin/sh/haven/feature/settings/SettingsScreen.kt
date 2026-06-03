@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.VpnLock
+import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Hub
@@ -190,6 +191,7 @@ fun SettingsScreen(
     var showAuditLog by remember { mutableStateOf(false) }
     var showProotInstallLog by remember { mutableStateOf(false) }
     var showAgentActivity by remember { mutableStateOf(false) }
+    var showPairedClients by remember { mutableStateOf(false) }
     var showFontUrlDialog by remember { mutableStateOf(false) }
     var showRecommendedFontsDialog by remember { mutableStateOf(false) }
     // Lifted to SettingsScreen scope so a dialog's confirm handler can
@@ -323,6 +325,10 @@ fun SettingsScreen(
     }
     if (showAgentActivity) {
         AgentActivityScreen(onBack = { showAgentActivity = false })
+        return
+    }
+    if (showPairedClients) {
+        PairedClientsScreen(onBack = { showPairedClients = false })
         return
     }
     if (showFontUrlDialog) {
@@ -988,6 +994,12 @@ fun SettingsScreen(
                     stringResource(R.string.settings_agent_activity_title),
                 subtitle = stringResource(R.string.settings_agent_activity_subtitle),
                 onClick = { showAgentActivity = true },
+            )
+            SettingsItem(
+                icon = Icons.Filled.Devices,
+                title = stringResource(R.string.settings_paired_clients_title),
+                subtitle = stringResource(R.string.settings_paired_clients_subtitle),
+                onClick = { showPairedClients = true },
             )
             SettingsToggleItem(
                 icon = Icons.Filled.Fingerprint,

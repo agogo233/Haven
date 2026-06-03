@@ -359,5 +359,16 @@
     <string name="settings_ime_flag_no_extract_ui_detail">IME_FLAG_NO_EXTRACT_UI — 가로 모드의 전체 화면 IME UI가 표시되지 않습니다.</string>
     <string name="settings_ime_flag_no_learning_title">IME 학습 차단</string>
     <string name="settings_ime_flag_no_learning_detail">IME_FLAG_NO_PERSONALIZED_LEARNING — 개인정보 보호: IME 단어 저장소가 입력된 텍스트를 무시합니다. Gboard에서 마이크도 숨길 만큼 강력합니다.</string>
-
+    <string name="settings_paired_clients_title">페어링된 MCP 클라이언트</string>
+    <string name="settings_paired_clients_subtitle">페어링된 클라이언트 검토, 클라이언트별 확인 건너뛰기 또는 페어링 해제</string>
+    <string name="settings_paired_clients_screen_title">페어링된 MCP 클라이언트</string>
+    <string name="settings_paired_clients_empty">아직 페어링된 MCP 클라이언트가 없습니다. 클라이언트의 연결 요청을 승인하면 여기에 표시됩니다.</string>
+    <string name="settings_paired_clients_bypass_label">승인 요청 건너뛰기</string>
+    <string name="settings_paired_clients_bypass_on">이 클라이언트의 모든 호출을 자동 승인합니다(파괴적 작업 포함).</string>
+    <string name="settings_paired_clients_bypass_off">파괴적 호출은 여전히 동의를 요청합니다(기본값).</string>
+    <string name="settings_paired_clients_cd_unpair">클라이언트 페어링 해제</string>
+    <string name="settings_paired_clients_unpair_title">\'%1$s\' 페어링을 해제하시겠습니까?</string>
+    <string name="settings_paired_clients_unpair_message">다음에 연결할 때 다시 승인해야 하며, 자동 승인은 취소됩니다.</string>
+    <string name="settings_paired_clients_unpair_confirm">페어링 해제</string>
+    <string name="settings_paired_clients_unpaired_toast">\'%1$s\' 페어링을 해제했습니다</string>
 </resources>

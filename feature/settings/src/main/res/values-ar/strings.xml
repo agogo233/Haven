@@ -359,4 +359,16 @@
     <string name="settings_ime_flag_no_extract_ui_detail">IME_FLAG_NO_EXTRACT_UI — يمنع ظهور واجهة IME ملء الشاشة في الوضع الأفقي.</string>
     <string name="settings_ime_flag_no_learning_title">منع IME من التعلم</string>
     <string name="settings_ime_flag_no_learning_detail">IME_FLAG_NO_PERSONALIZED_LEARNING — خصوصية: يتجاهل مستودع كلمات IME ما يُكتب. قوي بما يكفي على Gboard لإخفاء الميكروفون أيضًا.</string>
+    <string name="settings_paired_clients_title">عملاء MCP المقترنون</string>
+    <string name="settings_paired_clients_subtitle">راجع العملاء المقترنين، وتخطَّ المطالبات لكل عميل، أو ألغِ الاقتران</string>
+    <string name="settings_paired_clients_screen_title">عملاء MCP المقترنون</string>
+    <string name="settings_paired_clients_empty">لم يتم اقتران أي عميل MCP بعد. يظهر العميل هنا بعد موافقتك على مطالبة الاتصال الخاصة به.</string>
+    <string name="settings_paired_clients_bypass_label">تخطّي مطالبات الموافقة</string>
+    <string name="settings_paired_clients_bypass_on">يوافق تلقائيًا على كل استدعاء من هذا العميل، بما في ذلك العمليات المدمِّرة.</string>
+    <string name="settings_paired_clients_bypass_off">لا يزال كل استدعاء مدمِّر يطلب الموافقة (افتراضي).</string>
+    <string name="settings_paired_clients_cd_unpair">إلغاء اقتران العميل</string>
+    <string name="settings_paired_clients_unpair_title">إلغاء اقتران \'%1$s\'؟</string>
+    <string name="settings_paired_clients_unpair_message">سيتعين الموافقة عليه مجددًا في المرة التالية التي يتصل فيها، وسيتم إلغاء أي موافقة تلقائية.</string>
+    <string name="settings_paired_clients_unpair_confirm">إلغاء الاقتران</string>
+    <string name="settings_paired_clients_unpaired_toast">تم إلغاء اقتران \'%1$s\'</string>
 </resources>

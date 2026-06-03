@@ -359,4 +359,16 @@
     <string name="settings_ime_flag_no_extract_ui_detail">IME_FLAG_NO_EXTRACT_UI — 横向き時の全画面 IME UI を非表示にします。</string>
     <string name="settings_ime_flag_no_learning_title">IME の学習をブロック</string>
     <string name="settings_ime_flag_no_learning_detail">IME_FLAG_NO_PERSONALIZED_LEARNING — プライバシー: IME の単語バンクが入力テキストを無視します。Gboard ではマイクも非表示になるほど強力です。</string>
+    <string name="settings_paired_clients_title">ペアリング済み MCP クライアント</string>
+    <string name="settings_paired_clients_subtitle">ペアリング済みクライアントの確認、クライアントごとの確認のスキップ、ペアリング解除</string>
+    <string name="settings_paired_clients_screen_title">ペアリング済み MCP クライアント</string>
+    <string name="settings_paired_clients_empty">ペアリング済みの MCP クライアントはまだありません。クライアントの接続確認を承認すると、ここに表示されます。</string>
+    <string name="settings_paired_clients_bypass_label">承認の確認をスキップ</string>
+    <string name="settings_paired_clients_bypass_on">このクライアントからのすべての呼び出しを自動承認します（破壊的な操作を含む）。</string>
+    <string name="settings_paired_clients_bypass_off">破壊的な呼び出しは引き続き同意を求めます（デフォルト）。</string>
+    <string name="settings_paired_clients_cd_unpair">クライアントのペアリングを解除</string>
+    <string name="settings_paired_clients_unpair_title">\'%1$s\' のペアリングを解除しますか？</string>
+    <string name="settings_paired_clients_unpair_message">次回接続時に再度承認が必要になり、自動承認は取り消されます。</string>
+    <string name="settings_paired_clients_unpair_confirm">ペアリング解除</string>
+    <string name="settings_paired_clients_unpaired_toast">\'%1$s\' のペアリングを解除しました</string>
 </resources>

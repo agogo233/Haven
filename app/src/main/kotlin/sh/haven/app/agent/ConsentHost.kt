@@ -7,8 +7,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -150,6 +153,18 @@ internal fun ConsentHost(viewModel: ConsentHostViewModel = hiltViewModel()) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                // Reported as "can't tap Agree" (#210): when the soft
+                // keyboard was up (consent fired from the terminal/SSH tab)
+                // or on a short screen, the action row at the bottom slid
+                // under the keyboard / off-screen with no way to reach it.
+                // imePadding() lifts the content above the keyboard and
+                // verticalScroll() guarantees the Allow/Deny row is always
+                // scrollable into view. (Bottom system-bar inset is already
+                // handled by ModalBottomSheet's contentWindowInsets, so we
+                // don't add navigationBarsPadding() here — that would
+                // double-pad.)
+                .imePadding()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 8.dp),
         ) {
             Text(

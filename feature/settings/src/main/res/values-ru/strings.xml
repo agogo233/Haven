@@ -359,4 +359,16 @@
     <string name="settings_ime_flag_no_extract_ui_detail">IME_FLAG_NO_EXTRACT_UI — предотвращает показ полноэкранного IME в альбомной ориентации.</string>
     <string name="settings_ime_flag_no_learning_title">Запретить IME обучаться</string>
     <string name="settings_ime_flag_no_learning_detail">IME_FLAG_NO_PERSONALIZED_LEARNING — конфиденциальность: словарь IME игнорирует введённый текст. Достаточно сильно, чтобы скрыть микрофон в Gboard.</string>
+    <string name="settings_paired_clients_title">Сопряжённые клиенты MCP</string>
+    <string name="settings_paired_clients_subtitle">Просмотр сопряжённых клиентов, пропуск запросов по клиенту или разрыв сопряжения</string>
+    <string name="settings_paired_clients_screen_title">Сопряжённые клиенты MCP</string>
+    <string name="settings_paired_clients_empty">Пока нет сопряжённых клиентов MCP. Клиент появится здесь после того, как вы одобрите его запрос на подключение.</string>
+    <string name="settings_paired_clients_bypass_label">Пропускать запросы подтверждения</string>
+    <string name="settings_paired_clients_bypass_on">Автоматически одобряет каждый вызов этого клиента, включая разрушительные.</string>
+    <string name="settings_paired_clients_bypass_off">Каждый разрушительный вызов по-прежнему запрашивает согласие (по умолчанию).</string>
+    <string name="settings_paired_clients_cd_unpair">Разорвать сопряжение клиента</string>
+    <string name="settings_paired_clients_unpair_title">Разорвать сопряжение с \'%1$s\'?</string>
+    <string name="settings_paired_clients_unpair_message">При следующем подключении его потребуется одобрить заново, а любое автоодобрение отменяется.</string>
+    <string name="settings_paired_clients_unpair_confirm">Разорвать</string>
+    <string name="settings_paired_clients_unpaired_toast">Сопряжение с \'%1$s\' разорвано</string>
 </resources>

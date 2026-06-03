@@ -390,4 +390,18 @@
     <string name="settings_ime_flag_no_extract_ui_detail">IME_FLAG_NO_EXTRACT_UI — stops landscape\'s fullscreen IME UI from showing.</string>
     <string name="settings_ime_flag_no_learning_title">Block IME from learning</string>
     <string name="settings_ime_flag_no_learning_detail">IME_FLAG_NO_PERSONALIZED_LEARNING — privacy: IME\'s word bank ignores typed text. Strong enough on Gboard to also hide the mic.</string>
+
+    <!-- Paired MCP clients (#210) -->
+    <string name="settings_paired_clients_title">Paired MCP clients</string>
+    <string name="settings_paired_clients_subtitle">Review paired clients, skip prompts per client, or un-pair</string>
+    <string name="settings_paired_clients_screen_title">Paired MCP clients</string>
+    <string name="settings_paired_clients_empty">No MCP clients paired yet. A client appears here after you approve its connection prompt.</string>
+    <string name="settings_paired_clients_bypass_label">Skip approval prompts</string>
+    <string name="settings_paired_clients_bypass_on">Auto-approves every call from this client, including destructive ones.</string>
+    <string name="settings_paired_clients_bypass_off">Each destructive call still asks for consent (default).</string>
+    <string name="settings_paired_clients_cd_unpair">Un-pair client</string>
+    <string name="settings_paired_clients_unpair_title">Un-pair \'%1$s\'?</string>
+    <string name="settings_paired_clients_unpair_message">It will have to be approved again the next time it connects, and any auto-approval is revoked.</string>
+    <string name="settings_paired_clients_unpair_confirm">Un-pair</string>
+    <string name="settings_paired_clients_unpaired_toast">Un-paired \'%1$s\'</string>
 </resources>

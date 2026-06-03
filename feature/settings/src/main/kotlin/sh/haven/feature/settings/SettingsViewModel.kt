@@ -77,9 +77,40 @@ class SettingsViewModel @Inject constructor(
      * each tool re-prompts. DENY decisions are never memoised, so this
      * only ever loosens the cache; nothing the user gave a one-time
      * blanket allow to gets stuck in a stricter state by clearing.
+     * Also wipes the *persistent* per-client auto-approve set so "Forget
+     * remembered allows" fully resets agent trust, not just the session
+     * caches.
      */
     fun forgetMemoisedAgentAllows() {
-        viewModelScope.launch { agentConsentManager.clearMemoised() }
+        viewModelScope.launch {
+            agentConsentManager.clearMemoised()
+            preferencesRepository.clearMcpBypassConsentClients()
+        }
+    }
+
+    /** Paired MCP clients (clientInfo.name), sorted for stable display. */
+    val mcpAllowedClients: StateFlow<List<String>> = preferencesRepository.mcpAllowedClients
+        .map { it.sorted() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** Subset of paired clients the user has opted into auto-approval for. */
+    val mcpBypassConsentClients: StateFlow<Set<String>> =
+        preferencesRepository.mcpBypassConsentClients
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
+
+    /**
+     * Toggle persistent auto-approval (skip per-call consent prompts) for
+     * a paired client. Off by default; opting a client in means its tool
+     * calls — including destructive ones — run without a prompt until the
+     * user toggles it back off or un-pairs the client.
+     */
+    fun setMcpClientConsentBypass(name: String, enabled: Boolean) {
+        viewModelScope.launch { preferencesRepository.setMcpClientConsentBypass(name, enabled) }
+    }
+
+    /** Remove a client from the allowlist; it must re-pair to reconnect. */
+    fun unpairMcpClient(name: String) {
+        viewModelScope.launch { preferencesRepository.removeMcpAllowedClient(name) }
     }
 
     val biometricAvailable: Boolean =

@@ -359,4 +359,16 @@
     <string name="settings_ime_flag_no_extract_ui_detail">IME_FLAG_NO_EXTRACT_UI — empêche l\'interface IME plein écran en paysage de s\'afficher.</string>
     <string name="settings_ime_flag_no_learning_title">Bloquer l\'apprentissage de l\'IME</string>
     <string name="settings_ime_flag_no_learning_detail">IME_FLAG_NO_PERSONALIZED_LEARNING — confidentialité : la banque de mots de l\'IME ignore le texte saisi. Suffisamment fort sur Gboard pour masquer aussi le micro.</string>
+    <string name="settings_paired_clients_title">Clients MCP associés</string>
+    <string name="settings_paired_clients_subtitle">Vérifiez les clients associés, ignorez les invites par client ou dissociez</string>
+    <string name="settings_paired_clients_screen_title">Clients MCP associés</string>
+    <string name="settings_paired_clients_empty">Aucun client MCP associé pour l’instant. Un client apparaît ici après que vous avez approuvé son invite de connexion.</string>
+    <string name="settings_paired_clients_bypass_label">Ignorer les invites d’approbation</string>
+    <string name="settings_paired_clients_bypass_on">Approuve automatiquement chaque appel de ce client, y compris les appels destructeurs.</string>
+    <string name="settings_paired_clients_bypass_off">Chaque appel destructeur demande toujours le consentement (par défaut).</string>
+    <string name="settings_paired_clients_cd_unpair">Dissocier le client</string>
+    <string name="settings_paired_clients_unpair_title">Dissocier \'%1$s\' ?</string>
+    <string name="settings_paired_clients_unpair_message">Il devra être approuvé à nouveau lors de sa prochaine connexion, et toute approbation automatique est révoquée.</string>
+    <string name="settings_paired_clients_unpair_confirm">Dissocier</string>
+    <string name="settings_paired_clients_unpaired_toast">\'%1$s\' dissocié</string>
 </resources>

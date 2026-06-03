@@ -359,4 +359,16 @@
     <string name="settings_ime_flag_no_extract_ui_detail">IME_FLAG_NO_EXTRACT_UI — landscape का fullscreen IME UI दिखने से रोकता है।</string>
     <string name="settings_ime_flag_no_learning_title">IME को सीखने से रोकें</string>
     <string name="settings_ime_flag_no_learning_detail">IME_FLAG_NO_PERSONALIZED_LEARNING — privacy: IME का word bank typed text नज़रअंदाज़ करता है। Gboard पर mic भी छुपाने के लिए पर्याप्त।</string>
+    <string name="settings_paired_clients_title">युग्मित MCP क्लाइंट</string>
+    <string name="settings_paired_clients_subtitle">युग्मित क्लाइंट देखें, प्रति क्लाइंट प्रॉम्प्ट छोड़ें, या युग्मन हटाएँ</string>
+    <string name="settings_paired_clients_screen_title">युग्मित MCP क्लाइंट</string>
+    <string name="settings_paired_clients_empty">अभी तक कोई MCP क्लाइंट युग्मित नहीं है। किसी क्लाइंट का कनेक्शन प्रॉम्प्ट स्वीकृत करने के बाद वह यहाँ दिखाई देगा।</string>
+    <string name="settings_paired_clients_bypass_label">स्वीकृति प्रॉम्प्ट छोड़ें</string>
+    <string name="settings_paired_clients_bypass_on">इस क्लाइंट की हर कॉल स्वतः स्वीकृत करता है, विनाशकारी कॉल सहित।</string>
+    <string name="settings_paired_clients_bypass_off">हर विनाशकारी कॉल अब भी सहमति माँगती है (डिफ़ॉल्ट)।</string>
+    <string name="settings_paired_clients_cd_unpair">क्लाइंट का युग्मन हटाएँ</string>
+    <string name="settings_paired_clients_unpair_title">\'%1$s\' का युग्मन हटाएँ?</string>
+    <string name="settings_paired_clients_unpair_message">अगली बार कनेक्ट होने पर इसे फिर से स्वीकृत करना होगा, और कोई भी स्वतः-स्वीकृति रद्द हो जाएगी।</string>
+    <string name="settings_paired_clients_unpair_confirm">युग्मन हटाएँ</string>
+    <string name="settings_paired_clients_unpaired_toast">\'%1$s\' का युग्मन हटाया गया</string>
 </resources>

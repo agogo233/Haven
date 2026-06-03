@@ -27,6 +27,7 @@ class HavenApp : Application(), Configuration.Provider {
     @Inject lateinit var mcpServer: sh.haven.app.agent.McpServer
     @Inject lateinit var mcpTunnelManager: sh.haven.app.agent.McpTunnelManager
     @Inject lateinit var preferencesRepository: UserPreferencesRepository
+    @Inject lateinit var agentConsentManager: sh.haven.core.data.agent.AgentConsentManager
     @Inject lateinit var workspaceShortcutManager: sh.haven.app.workspace.WorkspaceShortcutManager
     @Inject lateinit var workerFactory: HiltWorkerFactory
     @Inject lateinit var prootManager: sh.haven.core.local.ProotManager
@@ -175,6 +176,17 @@ class HavenApp : Application(), Configuration.Provider {
             .distinctUntilChanged()
             .drop(1)
             .onEach { if (mcpServer.isRunning) mcpTunnelManager.refreshForwards() }
+            .launchIn(appScope)
+
+        // Keep the consent manager's persistent auto-approve set in sync
+        // with the user's Settings choice. AgentConsentManager holds no
+        // DataStore dependency by design (same as setForegroundActive),
+        // so the app layer pushes the set in on every change. Replays the
+        // current value on subscribe, so a process restart re-arms any
+        // standing bypass before the first tool call.
+        preferencesRepository.mcpBypassConsentClients
+            .distinctUntilChanged()
+            .onEach { agentConsentManager.setPersistentBypassClients(it) }
             .launchIn(appScope)
 
         // Schedule the daily step-ca cert-renewal check (#133 phase 2b).

@@ -359,4 +359,16 @@
     <string name="settings_ime_flag_no_extract_ui_detail">IME_FLAG_NO_EXTRACT_UI — landscape-এর fullscreen IME UI দেখানো বন্ধ করে।</string>
     <string name="settings_ime_flag_no_learning_title">IME-কে শেখা থেকে বিরত রাখুন</string>
     <string name="settings_ime_flag_no_learning_detail">IME_FLAG_NO_PERSONALIZED_LEARNING — গোপনীয়তা: IME-এর word bank টাইপ করা টেক্সট উপেক্ষা করে। Gboard-এ mic লুকাতেও যথেষ্ট শক্তিশালী।</string>
+    <string name="settings_paired_clients_title">পেয়ার করা MCP ক্লায়েন্ট</string>
+    <string name="settings_paired_clients_subtitle">পেয়ার করা ক্লায়েন্ট দেখুন, ক্লায়েন্ট অনুযায়ী প্রম্পট এড়িয়ে যান, বা আনপেয়ার করুন</string>
+    <string name="settings_paired_clients_screen_title">পেয়ার করা MCP ক্লায়েন্ট</string>
+    <string name="settings_paired_clients_empty">এখনও কোনও MCP ক্লায়েন্ট পেয়ার করা হয়নি। আপনি কোনও ক্লায়েন্টের সংযোগ প্রম্পট অনুমোদন করলে এটি এখানে দেখা যাবে।</string>
+    <string name="settings_paired_clients_bypass_label">অনুমোদন প্রম্পট এড়িয়ে যান</string>
+    <string name="settings_paired_clients_bypass_on">এই ক্লায়েন্টের প্রতিটি কল স্বয়ংক্রিয়ভাবে অনুমোদন করে, ধ্বংসাত্মক কলসহ।</string>
+    <string name="settings_paired_clients_bypass_off">প্রতিটি ধ্বংসাত্মক কল এখনও সম্মতি চায় (ডিফল্ট)।</string>
+    <string name="settings_paired_clients_cd_unpair">ক্লায়েন্ট আনপেয়ার করুন</string>
+    <string name="settings_paired_clients_unpair_title">\'%1$s\' আনপেয়ার করবেন?</string>
+    <string name="settings_paired_clients_unpair_message">পরেরবার সংযুক্ত হলে এটিকে আবার অনুমোদন করতে হবে, এবং যেকোনো স্বয়ংক্রিয় অনুমোদন বাতিল হবে।</string>
+    <string name="settings_paired_clients_unpair_confirm">আনপেয়ার</string>
+    <string name="settings_paired_clients_unpaired_toast">\'%1$s\' আনপেয়ার করা হয়েছে</string>
 </resources>

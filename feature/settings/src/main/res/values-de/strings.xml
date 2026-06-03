@@ -359,4 +359,16 @@
     <string name="settings_ime_flag_no_extract_ui_detail">IME_FLAG_NO_EXTRACT_UI — verhindert die Vollbild-IME-Oberfläche im Querformat.</string>
     <string name="settings_ime_flag_no_learning_title">IME-Lernfunktion sperren</string>
     <string name="settings_ime_flag_no_learning_detail">IME_FLAG_NO_PERSONALIZED_LEARNING — Datenschutz: Die Wortdatenbank der IME ignoriert eingetippten Text. Auf Gboard stark genug, um auch das Mikrofon auszublenden.</string>
+    <string name="settings_paired_clients_title">Gekoppelte MCP-Clients</string>
+    <string name="settings_paired_clients_subtitle">Gekoppelte Clients prüfen, Abfragen je Client überspringen oder Kopplung aufheben</string>
+    <string name="settings_paired_clients_screen_title">Gekoppelte MCP-Clients</string>
+    <string name="settings_paired_clients_empty">Noch keine MCP-Clients gekoppelt. Ein Client erscheint hier, nachdem du seine Verbindungsabfrage bestätigt hast.</string>
+    <string name="settings_paired_clients_bypass_label">Bestätigungsabfragen überspringen</string>
+    <string name="settings_paired_clients_bypass_on">Genehmigt automatisch jeden Aufruf dieses Clients, auch destruktive.</string>
+    <string name="settings_paired_clients_bypass_off">Jeder destruktive Aufruf fragt weiterhin nach Zustimmung (Standard).</string>
+    <string name="settings_paired_clients_cd_unpair">Client entkoppeln</string>
+    <string name="settings_paired_clients_unpair_title">\'%1$s\' entkoppeln?</string>
+    <string name="settings_paired_clients_unpair_message">Beim nächsten Verbinden muss er erneut bestätigt werden, und eine etwaige automatische Genehmigung wird widerrufen.</string>
+    <string name="settings_paired_clients_unpair_confirm">Entkoppeln</string>
+    <string name="settings_paired_clients_unpaired_toast">\'%1$s\' entkoppelt</string>
 </resources>

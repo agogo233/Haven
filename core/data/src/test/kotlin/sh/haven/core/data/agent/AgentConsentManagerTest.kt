@@ -334,4 +334,58 @@ class AgentConsentManagerTest {
         mgr.respond(mgr.pending.value.single().id, ConsentDecision.DENY)
         assertEquals(ConsentDecision.DENY, b.await())
     }
+
+    @Test
+    fun `persistent bypass auto-allows without prompting even for EVERY_CALL`() = runTest {
+        val mgr = AgentConsentManager()
+        mgr.setForegroundActive(true)
+        mgr.setPersistentBypassClients(setOf("trusted-agent"))
+
+        // No async/respond needed: a bypassed client short-circuits to
+        // ALLOW before any prompt is queued, even for the strictest level.
+        val decision = mgr.requestConsent(
+            toolName = "delete_sftp_file",
+            clientHint = "trusted-agent",
+            summary = "delete /tmp/x",
+            level = ConsentLevel.EVERY_CALL,
+        )
+        assertEquals(ConsentDecision.ALLOW, decision)
+        assertTrue("bypassed client must not queue a prompt", mgr.pending.value.isEmpty())
+    }
+
+    @Test
+    fun `persistent bypass applies even with no foreground activity`() = runTest {
+        val mgr = AgentConsentManager()
+        // foregroundActive defaults to false — a non-bypassed client would
+        // fail closed (DENY) here. The opt-in bypass deliberately outranks
+        // the foreground gate, same as the session-bypass checkbox.
+        mgr.setPersistentBypassClients(setOf("trusted-agent"))
+        val decision = mgr.requestConsent(
+            toolName = "delete_sftp_file",
+            clientHint = "trusted-agent",
+            summary = "delete /tmp/x",
+            level = ConsentLevel.EVERY_CALL,
+        )
+        assertEquals(ConsentDecision.ALLOW, decision)
+    }
+
+    @Test
+    fun `clearMemoised drops the persistent bypass snapshot`() = runTest(UnconfinedTestDispatcher()) {
+        val mgr = AgentConsentManager()
+        mgr.setForegroundActive(true)
+        mgr.setPersistentBypassClients(setOf("trusted-agent"))
+        mgr.clearMemoised()
+
+        // After a reset the client must prompt again rather than ride the
+        // stale in-memory bypass snapshot.
+        val follow = async {
+            mgr.requestConsent("delete_sftp_file", "trusted-agent", "x", ConsentLevel.EVERY_CALL, timeoutMs = Long.MAX_VALUE)
+        }
+        assertFalse(
+            "clearMemoised must drop the persistent bypass so a prompt is queued",
+            mgr.pending.value.isEmpty(),
+        )
+        mgr.respond(mgr.pending.value.single().id, ConsentDecision.DENY)
+        follow.await()
+    }
 }

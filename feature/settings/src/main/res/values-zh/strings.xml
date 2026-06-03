@@ -358,4 +358,16 @@
     <string name="settings_ime_flag_no_extract_ui_detail">IME_FLAG_NO_EXTRACT_UI — 阻止横屏时全屏输入法 UI 显示。</string>
     <string name="settings_ime_flag_no_learning_title">阻止输入法学习</string>
     <string name="settings_ime_flag_no_learning_detail">IME_FLAG_NO_PERSONALIZED_LEARNING — 隐私：输入法词库忽略输入文本。对 Gboard 效果足够强，同时也会隐藏麦克风。</string>
+    <string name="settings_paired_clients_title">已配对的 MCP 客户端</string>
+    <string name="settings_paired_clients_subtitle">查看已配对的客户端，按客户端跳过提示，或取消配对</string>
+    <string name="settings_paired_clients_screen_title">已配对的 MCP 客户端</string>
+    <string name="settings_paired_clients_empty">尚未配对任何 MCP 客户端。当你批准某个客户端的连接提示后，它会显示在这里。</string>
+    <string name="settings_paired_clients_bypass_label">跳过批准提示</string>
+    <string name="settings_paired_clients_bypass_on">自动批准该客户端的每次调用，包括破坏性操作。</string>
+    <string name="settings_paired_clients_bypass_off">每次破坏性调用仍会请求同意（默认）。</string>
+    <string name="settings_paired_clients_cd_unpair">取消配对客户端</string>
+    <string name="settings_paired_clients_unpair_title">取消配对 \'%1$s\'？</string>
+    <string name="settings_paired_clients_unpair_message">下次连接时它需要重新获得批准，并且任何自动批准都会被撤销。</string>
+    <string name="settings_paired_clients_unpair_confirm">取消配对</string>
+    <string name="settings_paired_clients_unpaired_toast">已取消配对 \'%1$s\'</string>
 </resources>

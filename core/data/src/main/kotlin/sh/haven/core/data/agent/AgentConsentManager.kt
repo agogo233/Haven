@@ -121,6 +121,19 @@ class AgentConsentManager @Inject constructor() {
      */
     private val sessionBypassClients = mutableSetOf<String>()
 
+    /**
+     * Clients the user has *persistently* opted into auto-approval for,
+     * via Settings → Agent endpoint → Paired clients. Unlike
+     * [sessionBypassClients] this survives app restart: it's the
+     * in-memory mirror of [UserPreferencesRepository.mcpBypassConsentClients],
+     * pushed in through [setPersistentBypassClients] by the app layer
+     * (same external-state-via-setter pattern as [setForegroundActive],
+     * keeping this class free of any DataStore dependency). A tool call
+     * from a name in this set bypasses the per-call consent prompt.
+     */
+    @Volatile
+    private var persistentBypassClients: Set<String> = emptySet()
+
     @Volatile
     private var foregroundActive: Boolean = false
 
@@ -134,6 +147,17 @@ class AgentConsentManager @Inject constructor() {
      */
     fun setForegroundActive(active: Boolean) {
         foregroundActive = active
+    }
+
+    /**
+     * Replace the set of persistently auto-approved clients. Called by
+     * the app layer whenever [UserPreferencesRepository.mcpBypassConsentClients]
+     * changes (collected in `HavenApp`). Idempotent; a plain volatile
+     * write — the read path in [requestConsent] only needs a consistent
+     * snapshot, not a lock.
+     */
+    fun setPersistentBypassClients(clients: Set<String>) {
+        persistentBypassClients = clients
     }
 
     /**
@@ -156,12 +180,16 @@ class AgentConsentManager @Inject constructor() {
     ): ConsentDecision {
         if (level == ConsentLevel.NEVER) return ConsentDecision.ALLOW
 
-        // Session-wide bypass: if the user has previously checked
-        // "Allow all MCP requests from '<client>' until app restart",
-        // skip prompts for any non-NEVER tool from that client. Applies
-        // to EVERY_CALL too — that's the "ill-advised" part the UX copy
-        // warns about.
+        // Bypass: if the user has opted this client out of per-call
+        // prompts — either persistently (Settings → Paired clients) or
+        // for the session ("Allow all MCP requests from '<client>' until
+        // app restart" checkbox) — skip prompts for any non-NEVER tool
+        // from that client. Applies to EVERY_CALL too: that's the
+        // "ill-advised" part the UX copy warns about. The persistent set
+        // is a volatile snapshot fed from prefs; the session set is mutex
+        // -guarded because the respond() path mutates it concurrently.
         if (clientHint != null) {
+            if (clientHint in persistentBypassClients) return ConsentDecision.ALLOW
             mutex.withLock {
                 if (clientHint in sessionBypassClients) return ConsentDecision.ALLOW
             }
@@ -320,8 +348,17 @@ class AgentConsentManager @Inject constructor() {
         }
     }
 
-    /** Used by Settings → "Forget remembered allows". */
+    /**
+     * Used by Settings → "Forget remembered allows". Clears the session
+     * caches here; the *persistent* bypass set lives in DataStore, so the
+     * caller (`SettingsViewModel`) also wipes
+     * [UserPreferencesRepository.mcpBypassConsentClients] — that change
+     * then flows back here via [setPersistentBypassClients]. We also drop
+     * the in-memory persistent snapshot immediately so the reset takes
+     * effect without waiting for the collector to re-emit.
+     */
     suspend fun clearMemoised() {
+        persistentBypassClients = emptySet()
         mutex.withLock {
             sessionAllowed.clear()
             sessionBypassClients.clear()
