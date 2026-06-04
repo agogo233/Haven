@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use log::{debug, error, info, warn};
 
 mod egfx;
+mod redirection;
 
 uniffi::setup_scaffolding!();
 
