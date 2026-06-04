@@ -290,7 +290,7 @@
     <string name="settings_agent_terminal_input_title">Permitir a los agentes poner en cola entrada de terminal</string>
     <string name="settings_agent_terminal_input_subtitle_on">Activado — `queue_terminal_input` monitoriza la salida de la sesión SSH y escribe el texto en cola en el siguiente prompt (consentimiento por llamada)</string>
     <string name="settings_agent_terminal_input_subtitle_off">Desactivado — las solicitudes de `queue_terminal_input` fallan inmediatamente, sin aviso</string>
-    <string name="settings_reverse_tunnel_title">Endpoint de túnel inverso</string>
+    <string name="settings_reverse_tunnel_title">Conexión MCP siempre activa</string>
     <string name="settings_reverse_tunnel_subtitle_set">Tunelizado a \"%1$s\" — persiste ante cambios de WiFi y reinicios de la app</string>
     <string name="settings_reverse_tunnel_subtitle_unset">No configurado — endpoint solo accesible en el dispositivo</string>
     <string name="settings_reverse_tunnel_none">Ninguno (solo en el dispositivo)</string>

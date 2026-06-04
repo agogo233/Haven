@@ -331,7 +331,7 @@
     <string name="connections_section_reticulum">Reticulum</string>
     <string name="connections_section_routing">Roteamento</string>
     <string name="connections_toggle_mcp_tunnel">Expor o servidor MCP do Haven</string>
-    <string name="connections_helper_mcp_tunnel">Adiciona uma regra -R 8730 → 127.0.0.1:8730 para que um cliente MCP neste servidor possa acessar o Haven em http://127.0.0.1:8730/mcp. Aplicada ao conectar.</string>
+    <string name="connections_helper_mcp_tunnel">Expõe o MCP do Haven a todas as sessões desta conexão — elas acessam http://127.0.0.1:8730/mcp e (via loopback) ignoram o emparelhamento e o consentimento. Aplicado ao conectar. Para acesso sempre ativo sem sessão aberta, defina-a como Conexão MCP sempre ativa em Configurações → Endpoint do agente.</string>
     <string name="connections_section_reconnect">Reconexão</string>
     <string name="connections_local_shell_android_desc">Executa o shell nativo do Android (/system/bin/sh). Acesso a comandos do Android, sistema de arquivos e root (se disponível).</string>
     <string name="connections_local_shell_proot_desc">Executa um shell Alpine Linux localmente via PRoot. Baixa um rootfs mínimo (~4 MB) no primeiro uso. Não requer root nem conexão de rede.</string>
@@ -440,4 +440,5 @@
     <string name="connections_auth_confirm_otp_desc">Exibe o código gerado para confirmação com um toque em vez de enviá-lo automaticamente.</string>
     <string name="connections_vm_copied_short">Copiado</string>
     <string name="connections_vm_terminal_not_found">App Terminal não encontrado</string>
+    <string name="connections_mcp_badge">MCP</string>
 </resources>

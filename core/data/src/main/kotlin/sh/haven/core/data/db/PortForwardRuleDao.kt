@@ -16,6 +16,9 @@ interface PortForwardRuleDao {
     @Query("SELECT * FROM port_forward_rules")
     suspend fun getAll(): List<PortForwardRule>
 
+    @Query("SELECT * FROM port_forward_rules")
+    fun observeAll(): Flow<List<PortForwardRule>>
+
     @Query("SELECT * FROM port_forward_rules WHERE profileId = :profileId AND enabled = 1")
     suspend fun getEnabledForProfile(profileId: String): List<PortForwardRule>
 

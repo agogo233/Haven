@@ -290,7 +290,7 @@
     <string name="settings_agent_terminal_input_title">Agents dürfen Terminaleingaben in die Warteschlange stellen</string>
     <string name="settings_agent_terminal_input_subtitle_on">Aktiviert — `queue_terminal_input` beobachtet die Ausgabe der SSH-Sitzung und tippt den Text beim nächsten Prompt (Zustimmung pro Aufruf)</string>
     <string name="settings_agent_terminal_input_subtitle_off">Deaktiviert — `queue_terminal_input`-Anfragen schlagen sofort fehl, keine Aufforderung</string>
-    <string name="settings_reverse_tunnel_title">Reverse-Tunnel-Endpunkt</string>
+    <string name="settings_reverse_tunnel_title">Dauerhafte MCP-Verbindung</string>
     <string name="settings_reverse_tunnel_subtitle_set">Getunnelt zu \"%1$s\" — überlebt WLAN-Wechsel &amp; App-Neustarts</string>
     <string name="settings_reverse_tunnel_subtitle_unset">Nicht gesetzt — Endpunkt nur auf dem Gerät erreichbar</string>
     <string name="settings_reverse_tunnel_none">Keiner (nur auf dem Gerät)</string>

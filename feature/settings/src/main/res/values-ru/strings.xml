@@ -290,7 +290,7 @@
     <string name="settings_agent_terminal_input_title">Разрешить агентам ставить ввод в очередь терминала</string>
     <string name="settings_agent_terminal_input_subtitle_on">Включено — `queue_terminal_input` следит за выводом SSH-сессии и вводит текст при следующем приглашении (согласие на каждый вызов)</string>
     <string name="settings_agent_terminal_input_subtitle_off">Отключено — запросы `queue_terminal_input` сразу завершаются ошибкой без запроса</string>
-    <string name="settings_reverse_tunnel_title">Конечная точка обратного туннеля</string>
+    <string name="settings_reverse_tunnel_title">Постоянное MCP-подключение</string>
     <string name="settings_reverse_tunnel_subtitle_set">Туннель к \"%1$s\" — сохраняется при смене Wi-Fi и перезапуске приложения</string>
     <string name="settings_reverse_tunnel_subtitle_unset">Не задана — конечная точка доступна только на устройстве</string>
     <string name="settings_reverse_tunnel_none">Нет (только на устройстве)</string>

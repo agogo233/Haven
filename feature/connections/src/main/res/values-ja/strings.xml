@@ -331,7 +331,7 @@
     <string name="connections_section_reticulum">Reticulum</string>
     <string name="connections_section_routing">ルーティング</string>
     <string name="connections_toggle_mcp_tunnel">HavenのMCPサーバーを公開</string>
-    <string name="connections_helper_mcp_tunnel">-R 8730 → 127.0.0.1:8730 のルールを追加し、このサーバー上のMCPクライアントが http://127.0.0.1:8730/mcp でHavenに接続できるようにします。接続時に適用されます。</string>
+    <string name="connections_helper_mcp_tunnel">Haven の MCP をこの接続のすべてのセッションに公開します。各セッションは http://127.0.0.1:8730/mcp に接続し、(ループバック経由で) ペアリングと同意をスキップします。接続時に適用されます。セッションを開かずに常時アクセスするには、設定 → エージェントエンドポイント で「常時接続のMCP接続」に設定してください。</string>
     <string name="connections_section_reconnect">再接続</string>
     <string name="connections_local_shell_android_desc">ネイティブのAndroidシェル (/system/bin/sh) を実行します。Androidのコマンド、ファイルシステム、root（利用可能な場合）にアクセスできます。</string>
     <string name="connections_local_shell_proot_desc">PRoot経由でAlpine Linuxシェルをローカルで実行します。初回使用時に最小限のrootfs（約4MB）をダウンロードします。rootやネットワーク接続は不要です。</string>
@@ -440,4 +440,5 @@
     <string name="connections_auth_confirm_otp_desc">生成されたコードをワンタップで確認してから送信（自動送信しない）。</string>
     <string name="connections_vm_copied_short">コピーしました</string>
     <string name="connections_vm_terminal_not_found">ターミナルアプリが見つかりません</string>
+    <string name="connections_mcp_badge">MCP</string>
 </resources>

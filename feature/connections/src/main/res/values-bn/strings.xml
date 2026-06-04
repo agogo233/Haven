@@ -331,7 +331,7 @@
     <string name="connections_section_reticulum">Reticulum</string>
     <string name="connections_section_routing">রাউটিং</string>
     <string name="connections_toggle_mcp_tunnel">Haven-এর MCP সার্ভার প্রকাশ করুন</string>
-    <string name="connections_helper_mcp_tunnel">একটি -R 8730 → 127.0.0.1:8730 নিয়ম যোগ করে যাতে এই সার্ভারে একটি MCP ক্লায়েন্ট http://127.0.0.1:8730/mcp-এ Haven-এ পৌঁছাতে পারে। সংযোগের সময় প্রয়োগ করা হয়।</string>
+    <string name="connections_helper_mcp_tunnel">এই সংযোগের প্রতিটি সেশনে Haven-এর MCP উন্মুক্ত করে — তারা http://127.0.0.1:8730/mcp-এ পৌঁছায় এবং (লুপব্যাকের মাধ্যমে) পেয়ারিং ও সম্মতি এড়িয়ে যায়। সংযোগের সময় প্রয়োগ হয়। কোনো সেশন খোলা ছাড়াই সর্বদা অ্যাক্সেসের জন্য, সেটিংস → এজেন্ট এন্ডপয়েন্ট-এ এটিকে সর্বদা-চালু MCP সংযোগ হিসেবে সেট করুন।</string>
     <string name="connections_section_reconnect">পুনঃসংযোগ</string>
     <string name="connections_local_shell_android_desc">নেটিভ Android শেল (/system/bin/sh) চালায়। Android কমান্ড, ফাইল সিস্টেম এবং root (উপলব্ধ থাকলে) অ্যাক্সেস।</string>
     <string name="connections_local_shell_proot_desc">PRoot-এর মাধ্যমে স্থানীয়ভাবে একটি Alpine Linux শেল চালায়। প্রথম ব্যবহারে একটি ন্যূনতম rootfs (~4MB) ডাউনলোড করে। root বা নেটওয়ার্ক সংযোগের প্রয়োজন নেই।</string>
@@ -440,4 +440,5 @@
     <string name="connections_auth_confirm_otp_desc">স্বয়ংক্রিয়ভাবে জমা না দিয়ে এক-ট্যাপ নিশ্চিতের জন্য তৈরি কোড দেখান।</string>
     <string name="connections_vm_copied_short">কপি হয়েছে</string>
     <string name="connections_vm_terminal_not_found">Terminal অ্যাপ পাওয়া যায়নি</string>
+    <string name="connections_mcp_badge">MCP</string>
 </resources>

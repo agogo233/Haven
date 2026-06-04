@@ -289,7 +289,7 @@
     <string name="settings_agent_terminal_input_title">允许代理排队终端输入</string>
     <string name="settings_agent_terminal_input_subtitle_on">已启用——`queue_terminal_input` 监视 SSH 会话输出，在下次提示符时键入排队文本（每次调用需确认）</string>
     <string name="settings_agent_terminal_input_subtitle_off">已禁用——`queue_terminal_input` 请求立即失败，无提示</string>
-    <string name="settings_reverse_tunnel_title">反向隧道端点</string>
+    <string name="settings_reverse_tunnel_title">常驻 MCP 连接</string>
     <string name="settings_reverse_tunnel_subtitle_set">已通过隧道连接到"%1$s"——WiFi 切换和应用重启后仍有效</string>
     <string name="settings_reverse_tunnel_subtitle_unset">未设置——端点仅在设备本地可访问</string>
     <string name="settings_reverse_tunnel_none">无（仅设备本地）</string>

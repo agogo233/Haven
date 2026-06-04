@@ -329,7 +329,7 @@
     <string name="connections_section_reticulum">Reticulum</string>
     <string name="connections_section_routing">路由</string>
     <string name="connections_toggle_mcp_tunnel">公开 Haven 的 MCP 服务器</string>
-    <string name="connections_helper_mcp_tunnel">添加 -R 8730 → 127.0.0.1:8730 规则，使此服务器上的 MCP 客户端能够通过 http://127.0.0.1:8730/mcp 访问 Haven。连接时应用。</string>
+    <string name="connections_helper_mcp_tunnel">将 Haven 的 MCP 开放给此连接的每个会话——它们可访问 http://127.0.0.1:8730/mcp，并（通过环回）跳过配对与同意。连接时生效。如需在不打开会话的情况下常驻访问，请在 设置 → 代理端点 中将其设为常驻 MCP 连接。</string>
     <string name="connections_section_reconnect">重新连接</string>
     <string name="connections_local_shell_android_desc">运行原生 Android shell (/system/bin/sh)。可访问 Android 命令、文件系统和 root（如果可用）。</string>
     <string name="connections_local_shell_proot_desc">通过 PRoot 在本地运行 Alpine Linux shell。首次使用时下载最小 rootfs（约 4MB）。无需 root 或网络连接。</string>
@@ -438,4 +438,5 @@
     <string name="connections_auth_confirm_otp_desc">显示生成的验证码供一键确认，而非自动提交。</string>
     <string name="connections_vm_copied_short">已复制</string>
     <string name="connections_vm_terminal_not_found">未找到终端应用</string>
+    <string name="connections_mcp_badge">MCP</string>
 </resources>

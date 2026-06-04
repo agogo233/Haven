@@ -290,7 +290,7 @@
     <string name="settings_agent_terminal_input_title">Agents को terminal input queue करने दें</string>
     <string name="settings_agent_terminal_input_subtitle_on">चालू — `queue_terminal_input` SSH session का output देखता है और अगले prompt पर queued text टाइप करता है (प्रति-call consent)</string>
     <string name="settings_agent_terminal_input_subtitle_off">बंद — `queue_terminal_input` अनुरोध तुरंत विफल, कोई prompt नहीं</string>
-    <string name="settings_reverse_tunnel_title">Reverse-tunnel endpoint</string>
+    <string name="settings_reverse_tunnel_title">हमेशा-चालू MCP कनेक्शन</string>
     <string name="settings_reverse_tunnel_subtitle_set">\"%1$s\" से tunnel — WiFi बदलने और app restarts पर बना रहता है</string>
     <string name="settings_reverse_tunnel_subtitle_unset">सेट नहीं — endpoint केवल on-device उपलब्ध है</string>
     <string name="settings_reverse_tunnel_none">कोई नहीं (केवल on-device)</string>

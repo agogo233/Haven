@@ -290,7 +290,7 @@
     <string name="settings_agent_terminal_input_title">エージェントによるターミナル入力のキューを許可</string>
     <string name="settings_agent_terminal_input_subtitle_on">有効 — `queue_terminal_input` は SSH セッションの出力を監視し、次のプロンプトでキューのテキストを入力します（呼び出しごとの同意）</string>
     <string name="settings_agent_terminal_input_subtitle_off">無効 — `queue_terminal_input` のリクエストはプロンプトなしで即座に失敗します</string>
-    <string name="settings_reverse_tunnel_title">リバーストンネルエンドポイント</string>
+    <string name="settings_reverse_tunnel_title">常時接続のMCP接続</string>
     <string name="settings_reverse_tunnel_subtitle_set">\"%1$s\" へトンネル中 — WiFi 変更やアプリ再起動後も維持</string>
     <string name="settings_reverse_tunnel_subtitle_unset">未設定 — エンドポイントはデバイス上のみでアクセス可能</string>
     <string name="settings_reverse_tunnel_none">なし（デバイス上のみ）</string>

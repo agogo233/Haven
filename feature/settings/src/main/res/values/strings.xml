@@ -310,7 +310,7 @@
     <string name="settings_agent_terminal_input_title">Allow agents to queue terminal input</string>
     <string name="settings_agent_terminal_input_subtitle_on">Enabled — `queue_terminal_input` watches the SSH session\'s output and types the queued text on the next prompt (per-call consent)</string>
     <string name="settings_agent_terminal_input_subtitle_off">Disabled — `queue_terminal_input` requests fail immediately, no prompt</string>
-    <string name="settings_reverse_tunnel_title">Reverse-tunnel endpoint</string>
+    <string name="settings_reverse_tunnel_title">Always-on MCP connection</string>
     <string name="settings_reverse_tunnel_subtitle_set">Tunnelled to \"%1$s\" — survives WiFi changes &amp; app restarts</string>
     <string name="settings_reverse_tunnel_subtitle_unset">Not set — endpoint reachable on-device only</string>
     <string name="settings_reverse_tunnel_none">None (on-device only)</string>

@@ -290,7 +290,7 @@
     <string name="settings_agent_terminal_input_title">Agent-দের টার্মিনাল ইনপুট queue করতে দিন</string>
     <string name="settings_agent_terminal_input_subtitle_on">চালু — `queue_terminal_input` SSH সেশনের আউটপুট দেখে পরবর্তী prompt-এ queued টেক্সট টাইপ করে (প্রতি-কলে সম্মতি)</string>
     <string name="settings_agent_terminal_input_subtitle_off">বন্ধ — `queue_terminal_input` অনুরোধ তাৎক্ষণিকভাবে ব্যর্থ হয়, কোনো prompt নেই</string>
-    <string name="settings_reverse_tunnel_title">Reverse-tunnel endpoint</string>
+    <string name="settings_reverse_tunnel_title">সর্বদা-চালু MCP সংযোগ</string>
     <string name="settings_reverse_tunnel_subtitle_set">\"%1$s\"-এ টানেল করা — WiFi পরিবর্তন ও অ্যাপ রিস্টার্টে টিকে থাকে</string>
     <string name="settings_reverse_tunnel_subtitle_unset">সেট করা নেই — endpoint শুধু ডিভাইসে পৌঁছানো যায়</string>
     <string name="settings_reverse_tunnel_none">কোনোটি নয় (শুধু ডিভাইসে)</string>

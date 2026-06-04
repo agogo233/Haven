@@ -290,7 +290,7 @@
     <string name="settings_agent_terminal_input_title">에이전트의 터미널 입력 허용</string>
     <string name="settings_agent_terminal_input_subtitle_on">활성화됨 — `queue_terminal_input`이 SSH 세션 출력을 감시하고 다음 프롬프트에서 대기 중인 텍스트를 입력합니다 (호출별 동의)</string>
     <string name="settings_agent_terminal_input_subtitle_off">비활성화됨 — `queue_terminal_input` 요청이 즉시 실패하며 프롬프트 없음</string>
-    <string name="settings_reverse_tunnel_title">역방향 터널 엔드포인트</string>
+    <string name="settings_reverse_tunnel_title">상시 연결 MCP 연결</string>
     <string name="settings_reverse_tunnel_subtitle_set">\"%1$s\"로 터널링됨 — WiFi 변경 및 앱 재시작 후에도 유지됩니다</string>
     <string name="settings_reverse_tunnel_subtitle_unset">설정되지 않음 — 엔드포인트가 기기에서만 접근 가능합니다</string>
     <string name="settings_reverse_tunnel_none">없음 (기기 전용)</string>

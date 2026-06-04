@@ -13,6 +13,9 @@ class PortForwardRepository @Inject constructor(
     fun observeForProfile(profileId: String): Flow<List<PortForwardRule>> =
         dao.observeForProfile(profileId)
 
+    /** All rules across every profile — used to derive which connections expose MCP. */
+    fun observeAll(): Flow<List<PortForwardRule>> = dao.observeAll()
+
     suspend fun getEnabledForProfile(profileId: String): List<PortForwardRule> =
         dao.getEnabledForProfile(profileId)
 

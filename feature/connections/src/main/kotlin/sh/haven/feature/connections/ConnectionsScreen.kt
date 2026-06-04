@@ -182,6 +182,7 @@ fun ConnectionsScreen(
     }
     // (showDesktopsScreen removed in 3c — Desktops UI moved to top-level Desktop tab.)
     val profileStatuses by viewModel.profileStatuses.collectAsState()
+    val mcpExposure by viewModel.mcpExposure.collectAsState()
     val sessions by viewModel.sessions.collectAsState()
 
     // Derive profile colors matching terminal tab colors (by session registration order)
@@ -1165,6 +1166,7 @@ fun ConnectionsScreen(
                                     indent = 0,
                                     isLastChild = false,
                                     profileStatuses = profileStatuses,
+                                    mcpExposure = mcpExposure,
                                     profileColors = profileColors,
                                     isConnecting = connectingProfileId == profile.id ||
                                         groupLaunchState?.connectingIds?.contains(profile.id) == true,
@@ -1268,6 +1270,7 @@ fun ConnectionsScreen(
                                         indent = depIndent,
                                         isLastChild = isLastAtLevel,
                                         profileStatuses = profileStatuses,
+                                        mcpExposure = mcpExposure,
                                         profileColors = profileColors,
                                         isConnecting = connectingProfileId == dep.id ||
                                             groupLaunchState?.connectingIds?.contains(dep.id) == true,
@@ -1401,6 +1404,7 @@ private fun ConnectionTreeItem(
     indent: Int,
     isLastChild: Boolean,
     profileStatuses: Map<String, ProfileStatus>,
+    mcpExposure: Map<String, McpExposureKind>,
     profileColors: Map<String, Color>,
     isConnecting: Boolean,
     hasKeys: Boolean,
@@ -1426,6 +1430,7 @@ private fun ConnectionTreeItem(
     onDragEnd: () -> Unit = {},
 ) {
     val profileStatus = profileStatuses[profile.id]
+    val mcpExposureKind = mcpExposure[profile.id]
     var showMenu by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
@@ -1595,7 +1600,34 @@ private fun ConnectionTreeItem(
                         )
                     }
                 },
-                trailingContent = null,
+                trailingContent = mcpExposureKind?.let { kind ->
+                    {
+                        // MCP-exposure badge: this connection serves Haven's MCP to
+                        // all its sessions. Filled = always-on (headless endpoint);
+                        // outlined = per-connection (rides interactive sessions).
+                        val headless = kind == McpExposureKind.HEADLESS
+                        AssistChip(
+                            onClick = onEdit,
+                            label = { Text(stringResource(R.string.connections_mcp_badge)) },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Filled.Cable,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(AssistChipDefaults.IconSize),
+                                )
+                            },
+                            colors = if (headless) {
+                                AssistChipDefaults.assistChipColors(
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                    labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    leadingIconContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                )
+                            } else {
+                                AssistChipDefaults.assistChipColors()
+                            },
+                        )
+                    }
+                },
                 modifier = Modifier
                     .weight(1f)
                     .combinedClickable(

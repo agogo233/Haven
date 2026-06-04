@@ -1,0 +1,3 @@
+- Connections: a connection that exposes Haven's MCP server now shows an "MCP" badge on its row — filled for the always-on endpoint, outlined when it's exposed per-connection — so it's clear at a glance which connection serves MCP to all of its sessions.
+- Agent/MCP: a connection designated as the always-on MCP endpoint no longer also applies its own per-connection reverse-tunnel rule, so the two can't collide on port 8730.
+- Settings: the MCP "reverse-tunnel endpoint" picker is now labelled "Always-on MCP connection", and the per-connection toggle's help text explains it covers every session on the connection.

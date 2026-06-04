@@ -380,7 +380,7 @@
 
     <!-- MCP reverse-tunnel toggle (SSH section). -->
     <string name="connections_toggle_mcp_tunnel">Expose Haven\'s MCP server</string>
-    <string name="connections_helper_mcp_tunnel">Adds a -R 8730 → 127.0.0.1:8730 rule so an MCP client on this server can reach Haven at http://127.0.0.1:8730/mcp. Applied on connect.</string>
+    <string name="connections_helper_mcp_tunnel">Exposes Haven\'s MCP to every session on this connection — they reach http://127.0.0.1:8730/mcp and (over loopback) skip pairing &amp; consent. Applied on connect. For always-on access with no session open, set this as the Always-on MCP connection in Settings → Agent endpoint.</string>
 
     <!-- Connection edit dialog: remaining field labels, toggles and helper text. -->
     <string name="connections_section_reconnect">Reconnect</string>
@@ -475,4 +475,5 @@
     <!-- #210 i18n sweep: VM-setup copy toasts and code-block copy action. -->
     <string name="connections_vm_copied_short">Copied</string>
     <string name="connections_vm_terminal_not_found">Terminal app not found</string>
+    <string name="connections_mcp_badge">MCP</string>
 </resources>

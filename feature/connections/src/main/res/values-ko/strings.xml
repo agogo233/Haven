@@ -323,7 +323,7 @@
     <string name="connections_section_reticulum">Reticulum</string>
     <string name="connections_section_routing">라우팅</string>
     <string name="connections_toggle_mcp_tunnel">Haven의 MCP 서버 노출</string>
-    <string name="connections_helper_mcp_tunnel">이 서버의 MCP 클라이언트가 http://127.0.0.1:8730/mcp에서 Haven에 접근할 수 있도록 -R 8730 → 127.0.0.1:8730 규칙을 추가합니다. 연결 시 적용됩니다.</string>
+    <string name="connections_helper_mcp_tunnel">Haven의 MCP를 이 연결의 모든 세션에 노출합니다. 각 세션은 http://127.0.0.1:8730/mcp에 접속하며 (루프백을 통해) 페어링과 동의를 건너뜁니다. 연결 시 적용됩니다. 세션을 열지 않고 상시 접근하려면 설정 → 에이전트 엔드포인트에서 상시 연결 MCP 연결로 지정하세요.</string>
     <string name="connections_section_reconnect">재연결</string>
     <string name="connections_local_shell_android_desc">네이티브 Android 셸(/system/bin/sh)을 실행합니다. Android 명령, 파일 시스템, root(사용 가능한 경우)에 접근합니다.</string>
     <string name="connections_local_shell_proot_desc">PRoot를 통해 Alpine Linux 셸을 로컬에서 실행합니다. 처음 사용할 때 최소 rootfs(~4MB)를 다운로드합니다. root나 네트워크 연결이 필요하지 않습니다.</string>
@@ -432,4 +432,5 @@
     <string name="connections_auth_confirm_otp_desc">자동 제출 대신 한 번의 탭으로 확인할 수 있도록 생성된 코드를 표시합니다.</string>
     <string name="connections_vm_copied_short">복사됨</string>
     <string name="connections_vm_terminal_not_found">Terminal 앱을 찾을 수 없습니다</string>
+    <string name="connections_mcp_badge">MCP</string>
 </resources>

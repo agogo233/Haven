@@ -331,7 +331,7 @@
     <string name="connections_section_reticulum">Reticulum</string>
     <string name="connections_section_routing">Маршрутизация</string>
     <string name="connections_toggle_mcp_tunnel">Открыть доступ к MCP-серверу Haven</string>
-    <string name="connections_helper_mcp_tunnel">Добавляет правило -R 8730 → 127.0.0.1:8730, чтобы MCP-клиент на этом сервере мог подключиться к Haven по адресу http://127.0.0.1:8730/mcp. Применяется при подключении.</string>
+    <string name="connections_helper_mcp_tunnel">Открывает MCP Haven для каждого сеанса этого подключения — они обращаются к http://127.0.0.1:8730/mcp и (через loopback) пропускают сопряжение и согласие. Применяется при подключении. Для постоянного доступа без открытого сеанса назначьте его как Постоянное MCP-подключение в Настройки → Конечная точка агента.</string>
     <string name="connections_section_reconnect">Переподключение</string>
     <string name="connections_local_shell_android_desc">Запускает встроенную оболочку Android (/system/bin/sh). Доступ к командам Android, файловой системе и root (если доступен).</string>
     <string name="connections_local_shell_proot_desc">Запускает оболочку Alpine Linux локально через PRoot. При первом использовании загружает минимальный rootfs (~4 МБ). Root и сетевое подключение не нужны.</string>
@@ -440,4 +440,5 @@
     <string name="connections_auth_confirm_otp_desc">Показывать сгенерированный код для подтверждения одним касанием вместо автоматической отправки.</string>
     <string name="connections_vm_copied_short">Скопировано</string>
     <string name="connections_vm_terminal_not_found">Приложение «Терминал» не найдено</string>
+    <string name="connections_mcp_badge">MCP</string>
 </resources>

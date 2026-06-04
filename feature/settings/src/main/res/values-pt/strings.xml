@@ -290,7 +290,7 @@
     <string name="settings_agent_terminal_input_title">Permitir que agentes enfilerem entrada no terminal</string>
     <string name="settings_agent_terminal_input_subtitle_on">Ativado — `queue_terminal_input` monitora a saída da sessão SSH e digita o texto enfileirado no próximo prompt (consentimento por chamada)</string>
     <string name="settings_agent_terminal_input_subtitle_off">Desativado — solicitações `queue_terminal_input` falham imediatamente, sem prompt</string>
-    <string name="settings_reverse_tunnel_title">Endpoint de túnel reverso</string>
+    <string name="settings_reverse_tunnel_title">Conexão MCP sempre ativa</string>
     <string name="settings_reverse_tunnel_subtitle_set">Tunelado para \"%1$s\" — sobrevive a mudanças de Wi-Fi e reinicializações do app</string>
     <string name="settings_reverse_tunnel_subtitle_unset">Não configurado — endpoint acessível somente no dispositivo</string>
     <string name="settings_reverse_tunnel_none">Nenhum (somente no dispositivo)</string>

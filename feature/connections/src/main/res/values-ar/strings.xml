@@ -331,7 +331,7 @@
     <string name="connections_section_reticulum">Reticulum</string>
     <string name="connections_section_routing">التوجيه</string>
     <string name="connections_toggle_mcp_tunnel">إتاحة خادم MCP الخاص بـ Haven</string>
-    <string name="connections_helper_mcp_tunnel">يضيف قاعدة -R 8730 → 127.0.0.1:8730 ليتمكن عميل MCP على هذا الخادم من الوصول إلى Haven على http://127.0.0.1:8730/mcp. يُطبَّق عند الاتصال.</string>
+    <string name="connections_helper_mcp_tunnel">يتيح MCP الخاص بـ Haven لكل جلسة على هذا الاتصال — تصل إلى http://127.0.0.1:8730/mcp وتتخطى (عبر الاسترجاع) الإقران والموافقة. يُطبَّق عند الاتصال. للوصول الدائم دون جلسة مفتوحة، عيّنه كاتصال MCP دائم التشغيل في الإعدادات → نقطة نهاية الوكيل.</string>
     <string name="connections_section_reconnect">إعادة الاتصال</string>
     <string name="connections_local_shell_android_desc">يشغّل صدفة أندرويد الأصلية (/system/bin/sh). الوصول إلى أوامر أندرويد ونظام الملفات والجذر (إن توفّر).</string>
     <string name="connections_local_shell_proot_desc">يشغّل صدفة Alpine Linux محليًا عبر PRoot. ينزّل نظام جذر أدنى (~4 ميجابايت) عند أول استخدام. لا حاجة إلى الجذر أو اتصال بالشبكة.</string>
@@ -440,4 +440,5 @@
     <string name="connections_auth_confirm_otp_desc">عرض الرمز المُنشأ لتأكيد بنقرة واحدة بدلًا من إرساله تلقائيًا.</string>
     <string name="connections_vm_copied_short">تم النسخ</string>
     <string name="connections_vm_terminal_not_found">تطبيق الطرفية غير موجود</string>
+    <string name="connections_mcp_badge">MCP</string>
 </resources>

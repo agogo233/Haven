@@ -290,7 +290,7 @@
     <string name="settings_agent_terminal_input_title">السماح للوكلاء بإدخال نص في الطرفية</string>
     <string name="settings_agent_terminal_input_subtitle_on">مفعّل — `queue_terminal_input` يراقب مخرجات جلسة SSH ويكتب النص المُجدوَل عند المطالبة التالية (موافقة لكل استدعاء)</string>
     <string name="settings_agent_terminal_input_subtitle_off">معطّل — طلبات `queue_terminal_input` تفشل فورًا بدون أي موجه</string>
-    <string name="settings_reverse_tunnel_title">نقطة نهاية النفق العكسي</string>
+    <string name="settings_reverse_tunnel_title">اتصال MCP دائم التشغيل</string>
     <string name="settings_reverse_tunnel_subtitle_set">نفق إلى \"%1$s\" — يبقى عبر تغييرات WiFi وإعادة تشغيل التطبيق</string>
     <string name="settings_reverse_tunnel_subtitle_unset">غير مضبوط — نقطة النهاية قابلة للوصول على الجهاز فقط</string>
     <string name="settings_reverse_tunnel_none">بلا (على الجهاز فقط)</string>

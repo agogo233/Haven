@@ -290,7 +290,7 @@
     <string name="settings_agent_terminal_input_title">Autoriser les agents à mettre en file d\'attente la saisie terminal</string>
     <string name="settings_agent_terminal_input_subtitle_on">Activé — `queue_terminal_input` surveille la sortie de la session SSH et saisit le texte en file d\'attente à la prochaine invite (confirmation par appel)</string>
     <string name="settings_agent_terminal_input_subtitle_off">Désactivé — les requêtes `queue_terminal_input` échouent immédiatement, sans invite</string>
-    <string name="settings_reverse_tunnel_title">Point de terminaison tunnel inverse</string>
+    <string name="settings_reverse_tunnel_title">Connexion MCP permanente</string>
     <string name="settings_reverse_tunnel_subtitle_set">Tunnelisé vers \"%1$s\" — survit aux changements Wi-Fi &amp; redémarrages</string>
     <string name="settings_reverse_tunnel_subtitle_unset">Non défini — point de terminaison accessible uniquement sur l\'appareil</string>
     <string name="settings_reverse_tunnel_none">Aucun (sur l\'appareil uniquement)</string>
