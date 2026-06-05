@@ -141,4 +141,5 @@
     <string name="app_biometric_no_hardware_title">Authentifizierung nicht verfügbar</string>
     <string name="app_biometric_no_hardware_body">Dieses Gerät kann sich nicht authentifizieren (keine biometrische Hardware und keine Geräteanmeldedaten). Richte in den Einstellungen eine PIN oder ein Passwort ein, um zu entsperren.</string>
     <string name="app_present_minimize">Minimieren</string>
+    <string name="app_present_pip">Bild im Bild</string>
 </resources>

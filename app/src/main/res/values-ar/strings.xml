@@ -141,4 +141,5 @@
     <string name="app_biometric_no_hardware_title">المصادقة غير متاحة</string>
     <string name="app_biometric_no_hardware_body">يتعذّر على هذا الجهاز إجراء المصادقة (لا توجد أجهزة قياسات حيوية ولا بيانات اعتماد للجهاز). أعدّ رمز PIN أو كلمة مرور في الإعدادات للإلغاء.</string>
     <string name="app_present_minimize">تصغير</string>
+    <string name="app_present_pip">صورة داخل صورة</string>
 </resources>

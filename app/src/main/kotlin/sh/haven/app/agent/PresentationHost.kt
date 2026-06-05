@@ -23,8 +23,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -103,8 +106,8 @@ internal class PresentationHostViewModel @Inject constructor(
         return connectionStore.controllerFor(sid, host, port)
     }
 
-    /** Tell the PiP layer which app window (if any) is currently on screen. */
-    fun setActiveAppWindow(media: PresentedMedia?) = pipController.setActiveAppWindow(media)
+    /** Tell the PiP layer which presented item (if any) is currently on screen. */
+    fun setActivePipMedia(media: PresentedMedia?) = pipController.setActivePipMedia(media)
 
     /**
      * Dismiss a presented item. Removes it from the queue immediately (UI
@@ -117,7 +120,7 @@ internal class PresentationHostViewModel @Inject constructor(
     fun dismiss(media: PresentedMedia) {
         manager.dismiss(media.id)
         if (media.kind == PresentedMediaKind.APP_WINDOW) {
-            pipController.setActiveAppWindow(null)
+            pipController.setActivePipMedia(null)
             media.sessionId?.let { sid ->
                 connectionStore.release(sid)
                 viewModelScope.launch(Dispatchers.IO) { desktopManager.stopAppWindow(sid) }
@@ -163,11 +166,12 @@ internal fun PresentationHost(viewModel: PresentationHostViewModel = hiltViewMod
             runCatching { sheetState.hide() }
             displayed = null
         }
-        // Tell the PiP layer which app window is on screen (for auto-enter +
-        // the floating view). Only an APP_WINDOW is PiP-eligible; cleared
-        // when nothing is shown. NOT cleared on dispose — an overlay→PiP
-        // transition disposes this host but the window must stay PiP-active.
-        viewModel.setActiveAppWindow(u?.takeIf { it.kind == PresentedMediaKind.APP_WINDOW })
+        // Tell the PiP layer which item is on screen (for the floating view, and
+        // APP_WINDOW auto-enter). Image / web / app-window are PiP-eligible;
+        // AUDIO has no visual surface so it is excluded. Cleared when nothing is
+        // shown. NOT cleared on dispose — an overlay→PiP transition disposes this
+        // host but the item must stay PiP-active. (#225)
+        viewModel.setActivePipMedia(u?.takeIf { it.kind != PresentedMediaKind.AUDIO })
     }
     val current = displayed ?: return
 
@@ -214,7 +218,8 @@ internal fun PresentationHost(viewModel: PresentationHostViewModel = hiltViewMod
                             onDismiss = { viewModel.dismiss(current) },
                             onMinimize = { viewModel.minimize(current.id) },
                             onPictureInPicture = {
-                                (context.findActivity() as? MainActivity)?.enterPipForAppWindow()
+                                viewModel.setActivePipMedia(current)
+                                (context.findActivity() as? MainActivity)?.enterPipForMedia()
                             },
                         )
                     } else {
@@ -232,14 +237,36 @@ internal fun PresentationHost(viewModel: PresentationHostViewModel = hiltViewMod
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
                 ) {
+                    // Picture-in-picture floats the item over *other* apps (unlike
+                    // minimize, which only docks within Haven). Images and web
+                    // pages/PDFs are visual; audio has nothing to float. (#225)
+                    if (current.kind == PresentedMediaKind.IMAGE ||
+                        current.kind == PresentedMediaKind.WEB
+                    ) {
+                        val context = LocalContext.current
+                        OutlinedButton(onClick = {
+                            // Pin the active PiP item to what's on screen *now* — the
+                            // LaunchedEffect that normally tracks it is fragile across
+                            // dismiss/re-present and PiP enter/exit cycles, so set it
+                            // synchronously here so enterPipForMedia never sees null. (#225)
+                            viewModel.setActivePipMedia(current)
+                            (context.findActivity() as? MainActivity)?.enterPipForMedia()
+                        }) {
+                            Text(stringResource(R.string.app_present_pip))
+                        }
+                    }
                     // Minimize parks it as an edge icon (kept until dismissed) so
                     // the user can glance back at an image/page while they work;
                     // Dismiss removes it (and deletes its cache file).
                     OutlinedButton(onClick = { viewModel.minimize(current.id) }) {
                         Text(stringResource(R.string.app_present_minimize))
                     }
-                    Button(onClick = { viewModel.dismiss(current) }) {
-                        Text(stringResource(R.string.app_present_dismiss))
+                    // Compact X — the "Dismiss" label wrapped in the 3-button row.
+                    FilledIconButton(onClick = { viewModel.dismiss(current) }) {
+                        Icon(
+                            Icons.Filled.Close,
+                            contentDescription = stringResource(R.string.app_present_dismiss),
+                        )
                     }
                 }
             }

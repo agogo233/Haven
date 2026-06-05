@@ -24,13 +24,19 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.viewinterop.AndroidView
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import sh.haven.core.data.agent.PresentedMediaKind
 import sh.haven.app.agent.AppWindowConnectionStore
 import sh.haven.app.agent.AppWindowVncController
 import sh.haven.app.agent.PipController
@@ -139,48 +145,83 @@ class MainActivity : AppCompatActivity() {
      * API 26–30 auto-enter fallback: those releases lack
      * `setAutoEnterEnabled`, so enter PiP explicitly when the user leaves
      * while an app window is open. On API 31+ the armed params auto-enter.
+     * Only an APP_WINDOW auto-enters — an image/web sheet floats only via the
+     * explicit PiP button (auto-PiP'ing a static image on Home is surprising).
      */
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S &&
-            pipController.activeAppWindow.value != null
+            pipController.activePipMedia.value?.kind == PresentedMediaKind.APP_WINDOW
         ) {
             runCatching { enterPictureInPictureMode(buildPipParams()) }
         }
     }
 
-    /** Explicit PiP from the overlay's PiP button. */
-    fun enterPipForAppWindow() {
-        if (pipController.activeAppWindow.value == null) return
+    /** Explicit PiP from a present_media / present_web / app-window overlay button. */
+    fun enterPipForMedia() {
+        if (pipController.activePipMedia.value == null) return
         runCatching { enterPictureInPictureMode(buildPipParams()) }
     }
 
     private fun buildPipParams(): PictureInPictureParams {
         val builder = PictureInPictureParams.Builder()
-            .setAspectRatio(currentAppWindowAspect())
+            .setAspectRatio(currentPipAspect())
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            // Arm/disarm auto-enter based on whether an app window is open.
-            builder.setAutoEnterEnabled(pipController.activeAppWindow.value != null)
+            // Only a live app window auto-enters PiP on Home; image/web are
+            // explicit-tap only.
+            builder.setAutoEnterEnabled(
+                pipController.activePipMedia.value?.kind == PresentedMediaKind.APP_WINDOW,
+            )
         }
         return builder.build()
     }
 
-    /** Aspect ratio from the current app-window frame, clamped to Android's
-     *  allowed PiP range; falls back to 16:9. */
-    private fun currentAppWindowAspect(): Rational {
-        val media = pipController.activeAppWindow.value
-        val frame = media?.sessionId?.let { sid ->
-            val h = media.host
-            val p = media.port
-            if (h != null && p != null) {
-                appWindowConnectionStore.controllerFor(sid, h, p).frame.value
-            } else null
+    /** Aspect ratio for the current PiP item — VNC frame for an app window,
+     *  intrinsic size for an image / PDF, 16:9 for a WebView — clamped to
+     *  Android's allowed PiP range, with a 16:9 fallback. (#225) */
+    private fun currentPipAspect(): Rational {
+        val media = pipController.activePipMedia.value ?: return Rational(16, 9)
+        val dims: Pair<Int, Int>? = when (media.kind) {
+            PresentedMediaKind.APP_WINDOW -> {
+                val sid = media.sessionId
+                val h = media.host
+                val p = media.port
+                if (sid != null && h != null && p != null) {
+                    appWindowConnectionStore.controllerFor(sid, h, p).frame.value
+                        ?.let { it.width to it.height }
+                } else null
+            }
+            PresentedMediaKind.IMAGE -> media.filePath?.let { imageDims(it) }
+            PresentedMediaKind.WEB ->
+                if (media.mimeType == "application/pdf") media.filePath?.let { pdfFirstPageDims(it) }
+                else null // HTML/SVG WebView has no intrinsic size → 16:9
+            else -> null
         }
-        if (frame == null || frame.width <= 0 || frame.height <= 0) return Rational(16, 9)
-        val ratio = frame.width.toFloat() / frame.height.toFloat()
+        val (w, h) = dims ?: return Rational(16, 9)
+        if (w <= 0 || h <= 0) return Rational(16, 9)
+        val ratio = w.toFloat() / h.toFloat()
         // Android rejects aspect ratios outside roughly [1:2.39, 2.39:1].
-        return if (ratio in 0.42f..2.39f) Rational(frame.width, frame.height) else Rational(16, 9)
+        return if (ratio in 0.42f..2.39f) Rational(w, h) else Rational(16, 9)
     }
+
+    /** Width/height of an image file via a bounds-only decode (no pixels). */
+    private fun imageDims(path: String): Pair<Int, Int>? = runCatching {
+        val opts = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeFile(path, opts)
+        if (opts.outWidth > 0 && opts.outHeight > 0) opts.outWidth to opts.outHeight else null
+    }.getOrNull()
+
+    /** Width/height of a PDF's first page. */
+    private fun pdfFirstPageDims(path: String): Pair<Int, Int>? = runCatching {
+        android.os.ParcelFileDescriptor.open(
+            java.io.File(path), android.os.ParcelFileDescriptor.MODE_READ_ONLY,
+        ).use { pfd ->
+            android.graphics.pdf.PdfRenderer(pfd).use { r ->
+                if (r.pageCount <= 0) null
+                else r.openPage(0).use { pg -> pg.width to pg.height }
+            }
+        }
+    }.getOrNull()
 
     /**
      * Parse `haven://renew-cert/<keyId>` deep links posted by
@@ -289,24 +330,38 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 val inPip by pipController.isInPip.collectAsState()
-                val activeAppWindow by pipController.activeAppWindow.collectAsState()
+                val activePipMedia by pipController.activePipMedia.collectAsState()
                 // Keep PiP params current so API 31+ auto-enters PiP when an
                 // app window is open, and disarms when it closes.
-                LaunchedEffect(activeAppWindow?.id) {
+                LaunchedEffect(activePipMedia?.id) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                         runCatching { setPictureInPictureParams(buildPipParams()) }
                     }
                 }
 
-                val pipWin = activeAppWindow
-                if (inPip && pipWin?.sessionId != null && pipWin.host != null && pipWin.port != null) {
-                    // In PiP: render just the live frame, full-bleed. PiP is
-                    // view-only on Android — interaction resumes on expand.
-                    PipAppWindow(
-                        appWindowConnectionStore.controllerFor(
-                            pipWin.sessionId!!, pipWin.host!!, pipWin.port!!,
-                        ),
-                    )
+                val pipWin = activePipMedia
+                if (inPip && pipWin != null) {
+                    // In PiP: render just the item, full-bleed on black. PiP is
+                    // view-only on Android — interaction resumes on expand. (#225)
+                    when (pipWin.kind) {
+                        PresentedMediaKind.APP_WINDOW -> {
+                            if (pipWin.sessionId != null && pipWin.host != null && pipWin.port != null) {
+                                PipAppWindow(
+                                    appWindowConnectionStore.controllerFor(
+                                        pipWin.sessionId!!, pipWin.host!!, pipWin.port!!,
+                                    ),
+                                )
+                            }
+                        }
+                        PresentedMediaKind.IMAGE -> pipWin.filePath?.let { PipImage(it) }
+                        PresentedMediaKind.WEB ->
+                            if (pipWin.mimeType == "application/pdf") {
+                                pipWin.filePath?.let { PipPdfFirstPage(it) }
+                            } else {
+                                pipWin.url?.let { PipWebView(it) }
+                            }
+                        else -> {}
+                    }
                 } else if (biometricEnabled && !unlocked) {
                     BiometricLockScreen(
                         authenticator = biometricAuthenticator,
@@ -350,20 +405,88 @@ class MainActivity : AppCompatActivity() {
 @Composable
 private fun PipAppWindow(controller: AppWindowVncController) {
     val frame by controller.frame.collectAsState()
-    val bmp = frame
+    PipBitmap(frame?.asImageBitmap())
+}
+
+/** Full-bleed bitmap on black — the shared body for the image and PDF PiP views. */
+@Composable
+private fun PipBitmap(bitmap: ImageBitmap?) {
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black),
         contentAlignment = Alignment.Center,
     ) {
-        if (bmp != null) {
+        if (bitmap != null) {
             Image(
-                bitmap = bmp.asImageBitmap(),
+                bitmap = bitmap,
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Fit,
             )
         }
+    }
+}
+
+/** PiP for a present_media image: the decoded file, full-bleed. (#225) */
+@Composable
+private fun PipImage(path: String) {
+    val bitmap by produceState<ImageBitmap?>(initialValue = null, path) {
+        value = withContext(Dispatchers.Default) {
+            runCatching { android.graphics.BitmapFactory.decodeFile(path)?.asImageBitmap() }
+                .getOrNull()
+        }
+    }
+    PipBitmap(bitmap)
+}
+
+/** PiP for a present_web PDF: the first page rasterised, full-bleed. (#225) */
+@Composable
+private fun PipPdfFirstPage(path: String) {
+    val bitmap by produceState<ImageBitmap?>(initialValue = null, path) {
+        value = withContext(Dispatchers.Default) {
+            runCatching {
+                android.os.ParcelFileDescriptor.open(
+                    java.io.File(path), android.os.ParcelFileDescriptor.MODE_READ_ONLY,
+                ).use { pfd ->
+                    android.graphics.pdf.PdfRenderer(pfd).use { r ->
+                        if (r.pageCount <= 0) return@runCatching null
+                        r.openPage(0).use { page ->
+                            val w = 1080
+                            val h = (w.toFloat() * page.height / page.width).toInt().coerceAtLeast(1)
+                            val bmp = android.graphics.Bitmap.createBitmap(
+                                w, h, android.graphics.Bitmap.Config.ARGB_8888,
+                            )
+                            bmp.eraseColor(android.graphics.Color.WHITE)
+                            page.render(
+                                bmp, null, null,
+                                android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY,
+                            )
+                            bmp.asImageBitmap()
+                        }
+                    }
+                }
+            }.getOrNull()
+        }
+    }
+    PipBitmap(bitmap)
+}
+
+/** PiP for a present_web HTML/SVG page: a live WebView loading the loopback
+ *  URL. Renders live; view-only in PiP (no touch until the window expands). (#225) */
+@Composable
+private fun PipWebView(url: String) {
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+        AndroidView(
+            factory = { ctx ->
+                android.webkit.WebView(ctx).apply {
+                    webViewClient = android.webkit.WebViewClient()
+                    settings.useWideViewPort = true
+                    settings.loadWithOverviewMode = true
+                    loadUrl(url)
+                }
+            },
+            modifier = Modifier.fillMaxSize(),
+        )
     }
 }

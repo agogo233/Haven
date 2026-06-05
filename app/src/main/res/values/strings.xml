@@ -160,4 +160,5 @@
     <string name="app_present_play">Play</string>
     <string name="app_present_preparing_audio">Preparing audio…</string>
     <string name="app_present_minimize">Minimize</string>
+    <string name="app_present_pip">Picture-in-picture</string>
 </resources>

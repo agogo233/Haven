@@ -147,4 +147,5 @@
     <string name="app_biometric_no_hardware_title">Аутентификация недоступна</string>
     <string name="app_biometric_no_hardware_body">Это устройство не может выполнить аутентификацию (нет биометрического оборудования и учётных данных устройства). Настройте PIN-код или пароль в настройках, чтобы разблокировать.</string>
     <string name="app_present_minimize">Свернуть</string>
+    <string name="app_present_pip">Картинка в картинке</string>
 </resources>

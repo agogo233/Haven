@@ -141,4 +141,5 @@
     <string name="app_biometric_no_hardware_title">Authentification indisponible</string>
     <string name="app_biometric_no_hardware_body">Cet appareil ne peut pas s\'authentifier (aucun matériel biométrique ni identifiant d\'appareil). Configurez un code PIN ou un mot de passe dans les Paramètres pour déverrouiller.</string>
     <string name="app_present_minimize">Réduire</string>
+    <string name="app_present_pip">Image dans l\'image</string>
 </resources>

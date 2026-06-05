@@ -141,4 +141,5 @@
     <string name="app_biometric_no_hardware_title">无法进行身份验证</string>
     <string name="app_biometric_no_hardware_body">此设备无法进行身份验证（无生物识别硬件且无设备凭据）。请在“设置”中设置 PIN 码或密码以解锁。</string>
     <string name="app_present_minimize">最小化</string>
+    <string name="app_present_pip">画中画</string>
 </resources>

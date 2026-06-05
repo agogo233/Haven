@@ -141,4 +141,5 @@
     <string name="app_biometric_no_hardware_title">Autenticação indisponível</string>
     <string name="app_biometric_no_hardware_body">Este dispositivo não consegue autenticar (sem hardware biométrico nem credencial do dispositivo). Configure um PIN ou senha nas Configurações para desbloquear.</string>
     <string name="app_present_minimize">Minimizar</string>
+    <string name="app_present_pip">Imagem sobre imagem</string>
 </resources>

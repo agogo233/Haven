@@ -141,4 +141,5 @@
     <string name="app_biometric_no_hardware_title">Authentication উপলব্ধ নয়</string>
     <string name="app_biometric_no_hardware_body">এই ডিভাইস authenticate করতে পারে না (কোনো biometric hardware বা device credential নেই)। আনলক করতে Settings-এ একটি PIN বা পাসওয়ার্ড সেট আপ করুন।</string>
     <string name="app_present_minimize">ছোট করুন</string>
+    <string name="app_present_pip">ছবির মধ্যে ছবি</string>
 </resources>
