@@ -24,7 +24,7 @@ import java.net.InetSocketAddress
 class WireguardTunnel internal constructor(configText: String) : Tunnel {
 
     private val native: NativeHandle = try {
-        Wgbridge.startTunnel(configText)
+        Wgbridge.startTunnel(ensurePeerKeepalive(configText))
     } catch (e: Exception) {
         throw IOException("Failed to start WireGuard tunnel: ${e.message}", e)
     }
@@ -79,6 +79,65 @@ class WireguardTunnel internal constructor(configText: String) : Tunnel {
             native.close()
         } catch (_: Throwable) {
             // Best-effort teardown.
+        }
+    }
+
+    companion object {
+        /**
+         * WireGuard's standard NAT/firewall keepalive interval (seconds). Injected
+         * into a [Peer] that omits one so the userspace tunnel stays warm.
+         */
+        internal const val DEFAULT_KEEPALIVE_SECONDS = 25
+
+        private val SECTION_HEADER = Regex("""^\s*\[\s*(\w+)\s*]""")
+        private val KEEPALIVE_LINE = Regex("""^\s*PersistentKeepalive\s*=""", RegexOption.IGNORE_CASE)
+
+        /**
+         * Ensure every `[Peer]` in a wg-quick [configText] carries a
+         * `PersistentKeepalive`, injecting [seconds] into any that don't.
+         *
+         * Why: these are userspace tunnels on a roaming mobile device. When the
+         * underlying transport changes (Wi-Fi↔mobile, hotspot hop, app restart),
+         * a *cold* peer only re-homes on the next outbound data packet or after a
+         * handshake timeout — a multi-second window during which the carrier's WG
+         * address is unreachable and anything riding it (the MCP endpoint) times
+         * out. A keepalive makes the device re-assert its endpoint to the peer
+         * every [seconds], collapsing that window. An explicit user-set interval
+         * is left untouched. The wgbridge parser maps this line to
+         * `persistent_keepalive_interval` in the wireguard-go UAPI.
+         */
+        internal fun ensurePeerKeepalive(
+            configText: String,
+            seconds: Int = DEFAULT_KEEPALIVE_SECONDS,
+        ): String {
+            if (seconds <= 0) return configText
+            val out = StringBuilder(configText.length + 32)
+            val section = StringBuilder()
+            var sectionName: String? = null
+            var sectionHasKeepalive = false
+
+            fun flushSection() {
+                val isPeer = sectionName.equals("Peer", ignoreCase = true)
+                if (isPeer && !sectionHasKeepalive && section.isNotBlank()) {
+                    out.append(section.toString().trimEnd('\n')).append('\n')
+                    out.append("PersistentKeepalive = ").append(seconds).append('\n')
+                } else {
+                    out.append(section)
+                }
+                section.setLength(0)
+                sectionHasKeepalive = false
+            }
+
+            for (line in configText.lineSequence()) {
+                if (SECTION_HEADER.containsMatchIn(line)) {
+                    flushSection()
+                    sectionName = SECTION_HEADER.find(line)!!.groupValues[1]
+                }
+                if (KEEPALIVE_LINE.containsMatchIn(line)) sectionHasKeepalive = true
+                section.append(line).append('\n')
+            }
+            flushSection()
+            return out.toString()
         }
     }
 }

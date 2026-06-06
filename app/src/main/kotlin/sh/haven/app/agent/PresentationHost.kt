@@ -1,5 +1,6 @@
 package sh.haven.app.agent
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
@@ -8,6 +9,7 @@ import android.graphics.BitmapFactory
 import android.graphics.pdf.PdfRenderer
 import android.media.MediaPlayer
 import android.os.ParcelFileDescriptor
+import android.view.MotionEvent
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.Image
@@ -21,6 +23,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -45,8 +49,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -287,17 +295,59 @@ private fun ImageContent(media: PresentedMedia) {
     }
     val bmp = bitmap
     if (bmp != null) {
+        // Pinch-zoom + pan. Pan is enabled only past 1× and bounded to the
+        // scaled overflow so the image can't be flung out of its card; a
+        // double-tap toggles 1×↔2×. detectTransformGestures consumes the
+        // drags, so a zoomed image pans cleanly rather than fighting the
+        // bottom sheet's swipe-to-dismiss (dismiss stays on the X / tap-out).
+        var scale by remember(media.id) { mutableStateOf(1f) }
+        var offset by remember(media.id) { mutableStateOf(Offset.Zero) }
         Image(
             bitmap = bmp,
             contentDescription = media.caption ?: stringResource(R.string.app_present_image_shared_cd),
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 480.dp),
             // FillWidth scales the bitmap up/down to the card width (height
             // follows aspect ratio, clamped by heightIn) so a small image
             // is shown prominently rather than as a tiny centred dot, while
             // a large screenshot is fit to width. Tall images crop centred.
             contentScale = ContentScale.FillWidth,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 480.dp)
+                .clipToBounds()
+                .pointerInput(media.id) {
+                    detectTransformGestures { _, pan, zoom, _ ->
+                        val newScale = (scale * zoom).coerceIn(1f, 5f)
+                        offset = if (newScale > 1f) {
+                            val maxX = size.width * (newScale - 1f) / 2f
+                            val maxY = size.height * (newScale - 1f) / 2f
+                            Offset(
+                                (offset.x + pan.x).coerceIn(-maxX, maxX),
+                                (offset.y + pan.y).coerceIn(-maxY, maxY),
+                            )
+                        } else {
+                            Offset.Zero
+                        }
+                        scale = newScale
+                    }
+                }
+                .pointerInput(media.id) {
+                    detectTapGestures(
+                        onDoubleTap = {
+                            if (scale > 1f) {
+                                scale = 1f
+                                offset = Offset.Zero
+                            } else {
+                                scale = 2f
+                            }
+                        },
+                    )
+                }
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = offset.x
+                    translationY = offset.y
+                },
         )
     } else {
         Box(
@@ -370,6 +420,7 @@ private fun AudioContent(media: PresentedMedia) {
  * security config), or a downloaded PDF ([PresentedMedia.filePath]) paged via
  * [PdfContent]. The rung between a static image and a live app window.
  */
+@SuppressLint("ClickableViewAccessibility") // onTouch only toggles parent intercept; WebView keeps its own click/scroll handling
 @Composable
 private fun WebContent(media: PresentedMedia) {
     val pdfPath = media.filePath
@@ -389,6 +440,21 @@ private fun WebContent(media: PresentedMedia) {
                     settings.displayZoomControls = false
                     settings.useWideViewPort = true
                     settings.loadWithOverviewMode = true
+                    // Keep the bottom sheet from stealing pan/zoom drags inside
+                    // the page: claim the gesture from the parent on touch-down,
+                    // release it on up/cancel. Without this the sheet intercepts
+                    // vertical drags and panning a zoomed page feels broken.
+                    setOnTouchListener { v, event ->
+                        when (event.actionMasked) {
+                            MotionEvent.ACTION_DOWN,
+                            MotionEvent.ACTION_POINTER_DOWN ->
+                                v.parent?.requestDisallowInterceptTouchEvent(true)
+                            MotionEvent.ACTION_UP,
+                            MotionEvent.ACTION_CANCEL ->
+                                v.parent?.requestDisallowInterceptTouchEvent(false)
+                        }
+                        false // never consume — WebView handles scroll/zoom/links
+                    }
                     loadUrl(url)
                 }
             },

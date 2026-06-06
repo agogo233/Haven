@@ -1,0 +1,4 @@
+- Agent presentation (present_media / present_web): images now pinch-zoom and pan (double-tap to toggle), and zoomed web pages pan smoothly without the bottom sheet stealing the drag.
+- present_media / present_web now acknowledge immediately instead of blocking on the file transfer, so a delivered image/page no longer reads back to the agent as a timeout.
+- send_to_agent returns a screenful-sized snapshot by default (configurable via maxLines) so a delivered message isn't lost behind a large scrollback over a tunnel.
+- More reliable MCP connectivity when the device roams networks: the WireGuard MCP carrier now uses a keepalive so it re-homes quickly after a Wi-Fi/mobile change instead of briefly dropping.

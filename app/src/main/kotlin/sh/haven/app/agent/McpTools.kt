@@ -137,6 +137,17 @@ internal class McpTools(
     private val usbProxyServer by lazy { sh.haven.core.usb.UsbProxyServer(usbBroker) }
 
     /**
+     * Fire-and-forget scope for agent→user *presentation* staging. present_media
+     * / present_web stage the referenced file (up to [MAX_PRESENT_BYTES]) off
+     * this scope so the MCP call acks immediately rather than blocking on the
+     * read — a slow backend read used to outlast the agent's call window, so a
+     * delivered image read back to the agent as a timeout. SupervisorJob so one
+     * failed staging never cancels the next; the overlay is the real user-facing
+     * artifact, so a staging failure is logged here, not surfaced to the agent.
+     */
+    private val presentScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /**
      * Auto-incrementing notification ID for raise_notification. Starts at
      * 40_000 to stay clear of the foreground-service notification IDs the
      * SSH / desktop / mcp services hand out (those use small, single-digit
@@ -533,7 +544,7 @@ internal class McpTools(
         ) { args -> playFile(args) },
 
         "present_media" to ToolHandler(
-            description = "Show the user an image — or play a short sound — inline in Haven. A bottom sheet floats over whatever screen the user is on, rendering the image (or an audio card with a play button) plus an optional caption. The \"here, look at / listen to this\" channel: use it when you have something visual or audible you want the user to perceive directly. Reference the media by a file Haven can reach — `profileId` (\"local\" for the device / proot-guest cache, or an SSH/SMB/rclone profile id) + `path` — or by a ready `url` (e.g. a serve_file loopback URL). Haven streams the file into a local handle; the bytes never pass through the agent context. `mimeType` is inferred from the file (extension, else content sniff) when omitted; set it for audio. Only image/* and audio/* are supported. Returns immediately ({ presented, id, kind, mimeType }); the user dismisses the sheet at their leisure.",
+            description = "Show the user an image — or play a short sound — inline in Haven. A bottom sheet floats over whatever screen the user is on, rendering the image (or an audio card with a play button) plus an optional caption. The \"here, look at / listen to this\" channel: use it when you have something visual or audible you want the user to perceive directly. Reference the media by a file Haven can reach — `profileId` (\"local\" for the device / proot-guest cache, or an SSH/SMB/rclone profile id) + `path` — or by a ready `url` (e.g. a serve_file loopback URL). Haven streams the file into a local handle; the bytes never pass through the agent context. `mimeType` is inferred from the file (extension, else content sniff) when omitted; set it for audio. Only image/* and audio/* are supported. Returns immediately ({ presented }) as soon as the request is accepted — Haven fetches/stages the file and shows the sheet in the background, so a slow transfer can't turn a delivered image into a timeout; a staging failure is logged (not returned). The user dismisses the sheet at their leisure.",
             inputSchema = JSONObject().apply {
                 put("type", "object")
                 put("properties", JSONObject().apply {
@@ -567,7 +578,7 @@ internal class McpTools(
         ) { args -> presentMedia(args) },
 
         "present_web" to ToolHandler(
-            description = "Show the user HTML, an SVG, or a PDF inline in an in-app WebView — the interactive rung between present_media (a static image) and present_app (a full live VNC app). Pass a `url` (e.g. a serve_file loopback URL or any web page), or reference a file with `profileId` (\"local\" for the device / proot-guest cache, or an SSH/SMB/rclone profile id) + `path`, which Haven serves over a loopback URL. A PDF is paged; HTML/SVG render live (pinch-zoom). Floats in a bottom sheet over whatever screen the user is on; bytes never pass through the agent context. Returns immediately ({ presented, id, url? }); the user dismisses it at their leisure.",
+            description = "Show the user HTML, an SVG, or a PDF inline in an in-app WebView — the interactive rung between present_media (a static image) and present_app (a full live VNC app). Pass a `url` (e.g. a serve_file loopback URL or any web page), or reference a file with `profileId` (\"local\" for the device / proot-guest cache, or an SSH/SMB/rclone profile id) + `path`, which Haven serves over a loopback URL. A PDF is paged; HTML/SVG render live (pinch-zoom + pan). Floats in a bottom sheet over whatever screen the user is on; bytes never pass through the agent context. Returns immediately: a `url` acks with { presented, id, url }; a file reference acks with { presented } and is staged/shown in the background (a staging failure is logged, not returned). The user dismisses it at their leisure.",
             inputSchema = JSONObject().apply {
                 put("type", "object")
                 put("properties", JSONObject().apply {
@@ -960,12 +971,13 @@ internal class McpTools(
         ) { args -> sendTerminalInput(args) },
 
         "send_to_agent" to ToolHandler(
-            description = "Deliver one message to another agent's REPL (or any raw-mode prompt) as a single submitted turn: bracketed-paste the text, settle, then Enter — and return the resulting screen. A convenience wrapper over send_terminal_input tuned for agent↔agent / REPL conversation, so you don't hand-assemble the body-then-Enter sequence. Use list_sessions (chosenSessionName) to pick the target. Returns { sessionId, delivered, bytesSent, snapshot }.",
+            description = "Deliver one message to another agent's REPL (or any raw-mode prompt) as a single submitted turn: bracketed-paste the text, settle, then Enter — and return the resulting screen (last ~50 lines by default). A convenience wrapper over send_terminal_input tuned for agent↔agent / REPL conversation, so you don't hand-assemble the body-then-Enter sequence. Use list_sessions (chosenSessionName) to pick the target. Returns { sessionId, delivered, bytesSent, snapshot }.",
             inputSchema = JSONObject().apply {
                 put("type", "object")
                 put("properties", JSONObject().apply {
                     put("sessionId", JSONObject().apply { put("type", "string"); put("description", "Active session ID (from list_sessions). Optional — defaults to the sole open terminal session.") })
                     put("message", JSONObject().apply { put("type", "string"); put("description", "The message to deliver as one submitted prompt.") })
+                    put("maxLines", JSONObject().apply { put("type", "integer"); put("description", "Cap the returned snapshot to the last N lines (default 50). Keeps the ack small so a delivered message doesn't read back as a timeout behind a large scrollback over a tunnel.") })
                 })
                 put("required", JSONArray().put("message"))
             },
@@ -3473,7 +3485,7 @@ internal class McpTools(
      * returns as soon as the item is queued, never waits on the user. See
      * [AgentPresentationManager].
      */
-    private suspend fun presentMedia(args: JSONObject): JSONObject = withContext(Dispatchers.IO) {
+    private fun presentMedia(args: JSONObject): JSONObject {
         if (args.optString("dataBase64").isNotEmpty()) {
             throw McpError(
                 -32602,
@@ -3487,60 +3499,82 @@ internal class McpTools(
         val autoPlay = args.optBoolean("autoPlay", false)
         val url = args.optString("url", "").ifEmpty { null }
         val path = args.optString("path", "").ifEmpty { null }
-
-        val srcName: String
-        val file: File = when {
-            url != null -> {
-                srcName = url.substringBefore('?').substringAfterLast('/')
-                downloadToPresentCache(url)
-            }
-            path != null -> {
-                val profileId = args.optString("profileId", "local").ifEmpty { "local" }
-                srcName = path.substringAfterLast('/')
-                streamBackendToPresentCache(profileId, path)
-            }
-            else -> throw McpError(
+        val profileId = args.optString("profileId", "local").ifEmpty { "local" }
+        if (url == null && path == null) {
+            throw McpError(
                 -32602,
                 "present_media needs a file reference: profileId + path, or url.",
             )
         }
 
-        // Determine MIME: explicit wins; else from the file name; else sniff
-        // the head bytes for a known image signature (audio can't be sniffed
-        // reliably, so it needs an extension or explicit mimeType).
-        val head = ByteArray(32)
-        val n = file.inputStream().use { it.read(head) }
-        val mime = explicitMime
-            ?: guessContentType(srcName).takeIf { it.startsWith("image/") || it.startsWith("audio/") }
-            ?: sniffImageMime(if (n > 0) head.copyOf(n) else head)
-            ?: run {
-                file.delete()
-                throw McpError(
-                    -32602,
-                    "Could not determine media type — pass mimeType (e.g. 'image/png' or 'audio/mpeg').",
+        // Stage + enqueue OFF the MCP call's critical path so the response acks
+        // immediately. Staging reads up to MAX_PRESENT_BYTES off a (possibly
+        // laggy) backend; doing it inline meant a delivered image still read
+        // back to the agent as a *timeout* when the read outlasted its call
+        // window (serve_file, which only binds a server, never had this). The
+        // overlay is the real user-facing artifact, so a staging failure is
+        // logged, not surfaced — the agent already has its optimistic ack.
+        presentScope.launch {
+            try {
+                val srcName: String
+                val file: File = if (url != null) {
+                    srcName = url.substringBefore('?').substringAfterLast('/')
+                    downloadToPresentCache(url)
+                } else {
+                    srcName = path!!.substringAfterLast('/')
+                    streamBackendToPresentCache(profileId, path)
+                }
+                // Determine MIME: explicit wins; else from the file name; else
+                // sniff the head bytes for a known image signature (audio can't
+                // be sniffed reliably, so it needs an extension or explicit mime).
+                val head = ByteArray(32)
+                val n = file.inputStream().use { it.read(head) }
+                val mime = explicitMime
+                    ?: guessContentType(srcName).takeIf { it.startsWith("image/") || it.startsWith("audio/") }
+                    ?: sniffImageMime(if (n > 0) head.copyOf(n) else head)
+                if (mime == null) {
+                    file.delete()
+                    logPresentFailure(profileId, url ?: path, "could not determine media type — pass mimeType")
+                    return@launch
+                }
+                val kind = when {
+                    mime.startsWith("image/") -> sh.haven.core.data.agent.PresentedMediaKind.IMAGE
+                    mime.startsWith("audio/") -> sh.haven.core.data.agent.PresentedMediaKind.AUDIO
+                    else -> {
+                        file.delete()
+                        logPresentFailure(profileId, url ?: path, "unsupported media type '$mime' (image/* and audio/* only)")
+                        return@launch
+                    }
+                }
+                presentationManager.present(
+                    kind = kind,
+                    filePath = file.absolutePath,
+                    mimeType = mime,
+                    caption = caption,
+                    autoPlay = autoPlay,
                 )
-            }
-        val kind = when {
-            mime.startsWith("image/") -> sh.haven.core.data.agent.PresentedMediaKind.IMAGE
-            mime.startsWith("audio/") -> sh.haven.core.data.agent.PresentedMediaKind.AUDIO
-            else -> {
-                file.delete()
-                throw McpError(-32602, "present_media supports image/* and audio/* only; got '$mime'.")
+            } catch (t: Throwable) {
+                logPresentFailure(profileId, url ?: path, t.message ?: t.toString())
             }
         }
+        return JSONObject().apply { put("presented", true) }
+    }
 
-        val id = presentationManager.present(
-            kind = kind,
-            filePath = file.absolutePath,
-            mimeType = mime,
-            caption = caption,
-            autoPlay = autoPlay,
-        )
-        JSONObject().apply {
-            put("presented", true)
-            put("id", id)
-            put("kind", kind.name.lowercase())
-            put("mimeType", mime)
+    /**
+     * Log a present_media / present_web staging failure. The agent already
+     * received its optimistic {presented:true} ack (the overlay is the real
+     * artifact), so a failed stage is a user-visible no-op — surface it to
+     * logcat, and to the connection log when it's a profile-backed read
+     * (logEvent no-ops on an orphan/"local" id via its FK guard).
+     */
+    private suspend fun logPresentFailure(profileId: String, ref: String?, reason: String) {
+        android.util.Log.w("McpTools", "present staging failed for ${ref ?: "?"}: $reason")
+        runCatching {
+            connectionLogRepository.logEvent(
+                profileId,
+                sh.haven.core.data.db.entities.ConnectionLog.Status.FAILED,
+                details = "present: ${ref ?: ""} — $reason",
+            )
         }
     }
 
@@ -3617,47 +3651,62 @@ internal class McpTools(
      * or a backend `profileId` + `path`. Bytes never pass through the agent
      * context. Fire and forget; returns as soon as the item is queued.
      */
-    private suspend fun presentWeb(args: JSONObject): JSONObject = withContext(Dispatchers.IO) {
+    private fun presentWeb(args: JSONObject): JSONObject {
         val caption = args.optString("caption", "").ifEmpty { null }
         val explicitUrl = args.optString("url", "").ifEmpty { null }
         val path = args.optString("path", "").ifEmpty { null }
 
-        val resultUrl: String?
-        val pdfFile: File?
-        val mime: String
-        when {
-            explicitUrl != null -> {
-                resultUrl = explicitUrl
-                pdfFile = null
-                mime = guessContentType(explicitUrl.substringBefore('?'))
+        // The url case needs no staging (it already IS a URL) — present it
+        // inline and return the full ack, including the url for reference.
+        if (explicitUrl != null) {
+            val mime = guessContentType(explicitUrl.substringBefore('?'))
+            val id = presentationManager.presentWeb(
+                url = explicitUrl,
+                filePath = null,
+                mimeType = mime,
+                caption = caption,
+            )
+            return JSONObject().apply {
+                put("presented", true)
+                put("id", id)
+                put("url", explicitUrl)
+                put("mimeType", mime)
             }
-            path != null -> {
-                val profileId = args.optString("profileId", "local").ifEmpty { "local" }
-                mime = guessContentType(path)
+        }
+        if (path == null) {
+            throw McpError(-32602, "present_web needs a url, or profileId + path.")
+        }
+        val profileId = args.optString("profileId", "local").ifEmpty { "local" }
+        val mime = guessContentType(path)
+
+        // The path case reads/serves the file off a backend; stage it OFF the
+        // call's critical path (see present_media) so a slow read can't turn a
+        // delivered view into a timeout. Failures are logged, not surfaced.
+        presentScope.launch {
+            try {
                 if (mime == "application/pdf") {
                     // PdfRenderer needs a seekable local file, not a URL.
-                    resultUrl = null
-                    pdfFile = streamBackendToPresentCache(profileId, path)
+                    val pdfFile = streamBackendToPresentCache(profileId, path)
+                    presentationManager.presentWeb(
+                        url = null,
+                        filePath = pdfFile.absolutePath,
+                        mimeType = mime,
+                        caption = caption,
+                    )
                 } else {
-                    resultUrl = publishFileLoopback(profileId, path).url
-                    pdfFile = null
+                    val loopbackUrl = publishFileLoopback(profileId, path).url
+                    presentationManager.presentWeb(
+                        url = loopbackUrl,
+                        filePath = null,
+                        mimeType = mime,
+                        caption = caption,
+                    )
                 }
+            } catch (t: Throwable) {
+                logPresentFailure(profileId, path, t.message ?: t.toString())
             }
-            else -> throw McpError(-32602, "present_web needs a url, or profileId + path.")
         }
-
-        val id = presentationManager.presentWeb(
-            url = resultUrl,
-            filePath = pdfFile?.absolutePath,
-            mimeType = mime,
-            caption = caption,
-        )
-        JSONObject().apply {
-            put("presented", true)
-            put("id", id)
-            resultUrl?.let { put("url", it) }
-            put("mimeType", mime)
-        }
+        return JSONObject().apply { put("presented", true) }
     }
 
     /**
@@ -4629,6 +4678,10 @@ internal class McpTools(
                 put("bracketedPaste", true)
                 put("keys", JSONArray().put("enter"))
                 put("returnSnapshot", true)
+                // Bound the ack snapshot to a screenful so a delivered message
+                // doesn't read back as a timeout behind a megabyte of scrollback
+                // over the tunnel (deliver-then-return). An explicit maxLines wins.
+                put("maxLines", if (args.has("maxLines")) args.optInt("maxLines") else SEND_TO_AGENT_SNAPSHOT_LINES)
             },
         )
     }
@@ -6698,6 +6751,17 @@ internal class McpTools(
          * stages the text without submitting — verified on Claude Code). #14
          */
         internal const val SUBMIT_SETTLE_MS = 150L
+
+        /**
+         * Default cap on the post-send snapshot send_to_agent returns. An
+         * unbounded full-scrollback snapshot is a large response that, over a
+         * tunnel, can outlast the caller's MCP timeout — the message delivers
+         * but the call reads back as a timeout (pilz hit this over WireGuard,
+         * while a manual send_terminal_input with the same write path but a
+         * smaller snapshot succeeded). A screenful is what a sender wants to
+         * see anyway; an explicit maxLines still wins.
+         */
+        internal const val SEND_TO_AGENT_SNAPSHOT_LINES = 50
     }
 
     // --- proot / desktop environment tool implementations (issue #162 Phase 3b) ---
