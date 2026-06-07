@@ -22,20 +22,20 @@ class ProtonMailClient @Inject constructor() : MailClient {
 
     override suspend fun login(
         sessionId: String,
-        username: String,
-        password: String,
-        mailboxPassword: String?,
-        twoFA: String?,
-        socks: String?,
+        params: MailConnectParams,
     ): MailLoginResult = withContext(Dispatchers.IO) {
+        val p = params as? MailConnectParams.Proton
+            ?: throw IllegalArgumentException(
+                "ProtonMailClient requires MailConnectParams.Proton, got ${params::class.simpleName}",
+            )
         val res = MailBridge.login(
             sessionId = sessionId,
-            username = username,
-            password = password,
-            mailboxPassword = mailboxPassword?.ifBlank { null },
-            twoFA = twoFA?.ifBlank { null },
+            username = p.username,
+            password = p.password,
+            mailboxPassword = p.mailboxPassword?.ifBlank { null },
+            twoFA = p.twoFA?.ifBlank { null },
             appVersion = APP_VERSION,
-            socks = socks?.ifBlank { null },
+            socks = p.socks?.ifBlank { null },
         )
         if (res.status != 200) throw mapError(res.status, res.output)
         val o = JSONObject(res.output)

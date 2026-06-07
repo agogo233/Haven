@@ -1,16 +1,26 @@
 package sh.haven.core.mail
 
 import dagger.Binds
+import dagger.MapKey
 import dagger.Module
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
-import javax.inject.Singleton
+import dagger.multibindings.IntoMap
 
-/** Binds the v1 Proton engine as the [MailClient]. */
+/** Dagger map key for the per-[MailEngine] [MailClient] registry. */
+@MapKey
+annotation class MailEngineKey(val value: MailEngine)
+
+/**
+ * Binds the mail engines into a `Map<MailEngine, MailClient>` that
+ * [MailSessionManager] routes by the session's engine. Proton is the v1 engine;
+ * the JVM IMAP/SMTP engine (Stage 2a) adds one more `@IntoMap` binding here.
+ */
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class MailModule {
     @Binds
-    @Singleton
-    abstract fun bindMailClient(impl: ProtonMailClient): MailClient
+    @IntoMap
+    @MailEngineKey(MailEngine.PROTON)
+    abstract fun bindProtonClient(impl: ProtonMailClient): MailClient
 }

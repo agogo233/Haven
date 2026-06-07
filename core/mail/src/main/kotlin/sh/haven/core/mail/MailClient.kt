@@ -1,9 +1,10 @@
 package sh.haven.core.mail
 
 /**
- * Provider-agnostic mail engine. v1 has a single Proton implementation
- * ([ProtonMailClient]) backed by the Go mailbridge; a JVM Jakarta Mail
- * implementation for IMAP/Gmail/Outlook is planned for stage 2.
+ * Provider-agnostic mail engine. Implementations: [ProtonMailClient] (Go
+ * mailbridge, SRP) and the JVM IMAP/SMTP engine (Stage 2a). Each handles one
+ * [MailConnectParams] variant; [MailSessionManager] routes by the session's
+ * [MailEngine].
  *
  * Session state (logged-in, keyring-unlocked accounts) lives behind the
  * implementation, keyed by an opaque [sessionId] the caller mints. All methods
@@ -13,22 +14,15 @@ package sh.haven.core.mail
 interface MailClient {
 
     /**
-     * Authenticate and unlock the account. Throws [MailException.TwoFaRequired]
-     * or [MailException.MailboxPasswordRequired] when the caller must re-prompt
-     * and retry with [twoFA] / [mailboxPassword] filled in (the same
-     * [sessionId] can be reused — no session is registered until unlock
-     * succeeds).
-     *
-     * @param socks bare `host:port` of a SOCKS5 listener to route through (the
-     *   per-profile tunnel), or null for a direct connection. NOT a URL.
+     * Authenticate and unlock the account using engine-specific [params]. Throws
+     * [MailException.TwoFaRequired] / [MailException.MailboxPasswordRequired]
+     * when the caller must re-prompt and retry (the same [sessionId] can be
+     * reused — no session is registered until unlock succeeds). Throws
+     * [IllegalArgumentException] if handed the wrong [MailConnectParams] variant.
      */
     suspend fun login(
         sessionId: String,
-        username: String,
-        password: String,
-        mailboxPassword: String? = null,
-        twoFA: String? = null,
-        socks: String? = null,
+        params: MailConnectParams,
     ): MailLoginResult
 
     /** List the account's folders/labels. */

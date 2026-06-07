@@ -5,11 +5,13 @@ import sh.haven.core.mail.MailFolder
 import sh.haven.core.mail.MailMessage
 
 /**
- * [MailBackend] over a connected Proton session: list calls delegate straight to
- * the [MailClient]; [readMessage] fetches the decrypted RFC822 bytes and parses
- * them with [MimeParser].
+ * Engine-neutral [MailBackend] over any connected [MailClient]: list calls
+ * delegate straight through, and [readMessage] fetches the raw RFC822 bytes and
+ * parses them with [MimeParser]. Both engines converge here — Proton decrypts to
+ * RFC822 in the Go bridge, IMAP emits RFC822 via `message.writeTo` — so a single
+ * backend (and a single parser) serves every provider.
  */
-class ProtonMailBackend(
+class RfcMailBackend(
     private val client: MailClient,
     private val sessionId: String,
 ) : MailBackend {

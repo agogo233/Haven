@@ -92,3 +92,40 @@ sealed class MailException(message: String) : Exception(message) {
     /** Any other bridge or protocol error, with the originating status. */
     class ProtocolError(val status: Int, message: String) : MailException(message)
 }
+
+/** Which engine backs a mail session — selects the [MailClient] in the registry. */
+enum class MailEngine { PROTON, IMAP }
+
+/**
+ * Engine-specific connect parameters. The sealed type lets the single
+ * [MailClient.login] carry both Proton (SRP + a SOCKS5 listener) and IMAP
+ * (server coordinates + a JVM [javax.net.SocketFactory]) without an FFI-shaped
+ * `socks: String?` signature leaking into the JVM engine, or vice-versa. Each
+ * [MailClient] handles exactly one variant and rejects the other.
+ */
+sealed interface MailConnectParams {
+    val username: String
+    val password: String
+
+    /** Proton SRP login (+ optional 2FA / mailbox password), routed via SOCKS5. */
+    data class Proton(
+        override val username: String,
+        override val password: String,
+        val mailboxPassword: String? = null,
+        val twoFA: String? = null,
+        /** Bare `host:port` of a SOCKS5 listener (the per-profile tunnel), or null. NOT a URL. */
+        val socks: String? = null,
+    ) : MailConnectParams
+
+    /** Generic IMAP/SMTP with password / app-password, routed via a JVM SocketFactory. */
+    data class Imap(
+        override val username: String,
+        override val password: String,
+        val server: String,
+        val port: Int,
+        val smtpPort: Int,
+        val tls: Boolean,
+        /** SocketFactory wrapping the per-profile tunnel, or null for a direct connection. */
+        val socketFactory: javax.net.SocketFactory? = null,
+    ) : MailConnectParams
+}

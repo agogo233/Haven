@@ -5,9 +5,10 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Resolves the [MailBackend] for a profile, mirroring
- * `feature/sftp`'s TransportSelector. v1 has only the Proton engine; future JVM
- * IMAP/Gmail/Outlook engines add branches here keyed on the connected session.
+ * Resolves the [MailBackend] for a profile, mirroring `feature/sftp`'s
+ * TransportSelector. Engine-agnostic: it pairs the session's engine [MailClient]
+ * (Proton or IMAP) with the one [RfcMailBackend], since both engines expose the
+ * same RFC822 read surface.
  */
 @Singleton
 class MailTransportSelector @Inject constructor(
@@ -16,6 +17,7 @@ class MailTransportSelector @Inject constructor(
     /** A backend for [profileId], or null if the profile has no connected session. */
     fun resolve(profileId: String): MailBackend? {
         val sessionId = mailSessionManager.getSessionIdForProfile(profileId) ?: return null
-        return ProtonMailBackend(mailSessionManager.mailClient, sessionId)
+        val client = mailSessionManager.clientForSession(sessionId) ?: return null
+        return RfcMailBackend(client, sessionId)
     }
 }

@@ -5,8 +5,8 @@ import sh.haven.core.mail.MailMessage
 
 /**
  * The feature-layer view of a connected mail account: folders, message lists,
- * and a fully-parsed (decrypted + MIME-parsed) message ready to render. One
- * implementation per engine — [ProtonMailBackend] in v1.
+ * and a fully-parsed (decrypted + MIME-parsed) message ready to render. Backed
+ * by the engine-neutral [RfcMailBackend] (Proton and IMAP both feed RFC822).
  */
 interface MailBackend {
     suspend fun listFolders(): List<MailFolder>

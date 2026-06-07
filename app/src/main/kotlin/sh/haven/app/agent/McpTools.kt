@@ -2809,13 +2809,18 @@ internal class McpTools(
         mailSessionManager.getSessionIdForProfile(profileId)
             ?: throw McpError(-32603, "Profile $profileId is not a connected email account — call connect_profile first.")
 
+    /** The engine client backing [sessionId] (Proton or IMAP), routed by the session manager. */
+    private fun mailClientFor(sessionId: String): sh.haven.core.mail.MailClient =
+        mailSessionManager.clientForSession(sessionId)
+            ?: throw McpError(-32603, "Session $sessionId has no registered mail engine.")
+
     private suspend fun listMailFolders(args: JSONObject): JSONObject {
         val profileId = args.optString("profileId").ifEmpty {
             throw McpError(-32602, "Missing required argument: profileId")
         }
         val sessionId = requireMailSession(profileId)
         return try {
-            val folders = mailSessionManager.mailClient.listFolders(sessionId)
+            val folders = mailClientFor(sessionId).listFolders(sessionId)
             JSONObject().apply {
                 put("count", folders.size)
                 put("folders", JSONArray().apply {
@@ -2840,7 +2845,7 @@ internal class McpTools(
         val folderId = args.optString("folderId").ifEmpty { sh.haven.core.mail.MailFolder.INBOX_ID }
         val sessionId = requireMailSession(profileId)
         return try {
-            val msgs = mailSessionManager.mailClient.listMessages(sessionId, folderId, desc = true)
+            val msgs = mailClientFor(sessionId).listMessages(sessionId, folderId, desc = true)
             JSONObject().apply {
                 put("folderId", folderId)
                 put("count", msgs.size)
@@ -2871,7 +2876,7 @@ internal class McpTools(
         }
         val sessionId = requireMailSession(profileId)
         return try {
-            val raw = mailSessionManager.mailClient.getMessageRaw(sessionId, messageId)
+            val raw = mailClientFor(sessionId).getMessageRaw(sessionId, messageId)
             val parsed = sh.haven.feature.mail.MimeParser.parse(raw)
             JSONObject().apply {
                 put("subject", parsed.subject)

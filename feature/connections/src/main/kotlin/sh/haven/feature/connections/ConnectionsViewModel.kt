@@ -54,6 +54,8 @@ import sh.haven.core.fido.FidoTouchPrompt
 import sh.haven.core.local.LocalSessionManager
 import sh.haven.core.rclone.RcloneClient
 import sh.haven.core.rclone.RcloneSessionManager
+import sh.haven.core.mail.MailConnectParams
+import sh.haven.core.mail.MailEngine
 import sh.haven.core.mail.MailException
 import sh.haven.core.mail.MailSessionManager
 import sh.haven.core.security.Totp
@@ -1767,16 +1769,20 @@ class ConnectionsViewModel @Inject constructor(
                 if (username.isBlank() || password.isBlank()) {
                     throw IllegalStateException("Proton username and password are required.")
                 }
-                val sessionId = mailSessionManager.registerSession(profile.id, profile.label)
+                val sessionId = mailSessionManager.registerSession(
+                    profile.id, profile.label, MailEngine.PROTON,
+                )
 
                 try {
                     mailSessionManager.connectSession(
                         sessionId = sessionId,
-                        username = username,
-                        password = password,
-                        mailboxPassword = profile.emailMailboxPassword?.ifBlank { null },
-                        twoFA = resolveEmailTotp(profile),
-                        socks = socks,
+                        params = MailConnectParams.Proton(
+                            username = username,
+                            password = password,
+                            mailboxPassword = profile.emailMailboxPassword?.ifBlank { null },
+                            twoFA = resolveEmailTotp(profile),
+                            socks = socks,
+                        ),
                     )
                 } catch (e: MailException.MailboxPasswordRequired) {
                     throw IllegalStateException(
