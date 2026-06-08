@@ -128,7 +128,20 @@ fun MailScreen(
                     if (ui.view == MailViewModel.View.FOLDERS) {
                         AccountSwitcher(ui.accounts, ui.activeAccount, viewModel::selectAccount)
                     } else {
-                        Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        // Folder name / subject, with the active account as a subtitle so it's
+                        // always clear which account's mail you're reading.
+                        Column {
+                            Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            ui.activeAccount?.let { acc ->
+                                Text(
+                                    acc.label,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
                     }
                 },
                 navigationIcon = {
