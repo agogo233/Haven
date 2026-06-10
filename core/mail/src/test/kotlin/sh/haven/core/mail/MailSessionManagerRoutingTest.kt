@@ -32,6 +32,10 @@ class MailSessionManagerRoutingTest {
         ) = emptyList<MailMessage>()
         override suspend fun getMessageRaw(sessionId: String, messageId: String) = ByteArray(0)
         override suspend fun send(sessionId: String, mail: OutgoingMail) = SendResult(null, false)
+        override suspend fun setSeen(sessionId: String, messageId: String, seen: Boolean) {}
+        override suspend fun setFlagged(sessionId: String, messageId: String, flagged: Boolean) {}
+        override suspend fun moveMessage(sessionId: String, messageId: String, destFolderId: String) {}
+        override suspend fun deleteMessage(sessionId: String, messageId: String) {}
         override suspend fun logout(sessionId: String) { logouts += sessionId }
     }
 

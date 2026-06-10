@@ -89,6 +89,22 @@ class ProtonMailClient @Inject constructor() : MailClient {
         throw MailException.ProtocolError(501, "Proton send is not implemented yet")
     }
 
+    // Mail Rules' IMAP filter actions aren't wired for the Proton (Go-bridge) engine
+    // yet — its label/message-mutation RPCs are a later checkpoint. Fail loudly (501)
+    // like send() rather than silently no-op, so a rule on a Proton account is visibly
+    // unsupported instead of appearing to succeed.
+    override suspend fun setSeen(sessionId: String, messageId: String, seen: Boolean): Unit =
+        throw MailException.ProtocolError(501, "Proton mark-read is not implemented yet")
+
+    override suspend fun setFlagged(sessionId: String, messageId: String, flagged: Boolean): Unit =
+        throw MailException.ProtocolError(501, "Proton flag is not implemented yet")
+
+    override suspend fun moveMessage(sessionId: String, messageId: String, destFolderId: String): Unit =
+        throw MailException.ProtocolError(501, "Proton move is not implemented yet")
+
+    override suspend fun deleteMessage(sessionId: String, messageId: String): Unit =
+        throw MailException.ProtocolError(501, "Proton delete is not implemented yet")
+
     override suspend fun logout(sessionId: String) {
         withContext(Dispatchers.IO) { MailBridge.logout(sessionId) }
     }

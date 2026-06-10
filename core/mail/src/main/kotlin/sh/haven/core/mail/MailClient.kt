@@ -53,6 +53,27 @@ interface MailClient {
      */
     suspend fun send(sessionId: String, mail: OutgoingMail): SendResult
 
+    /**
+     * Mark [messageId] read/unread (the IMAP `\Seen` flag). Used by Mail Rules'
+     * filter actions. The Proton engine throws [MailException.ProtocolError] (501).
+     */
+    suspend fun setSeen(sessionId: String, messageId: String, seen: Boolean)
+
+    /** Set/clear the IMAP `\Flagged` (starred) flag on [messageId]. Proton: 501. */
+    suspend fun setFlagged(sessionId: String, messageId: String, flagged: Boolean)
+
+    /**
+     * Move [messageId] to [destFolderId] (server-side copy + delete + expunge on
+     * the source). Proton: 501. On Gmail this relabels — "All Mail" retains the copy.
+     */
+    suspend fun moveMessage(sessionId: String, messageId: String, destFolderId: String)
+
+    /**
+     * Delete [messageId] (set `\Deleted` + expunge). On Gmail this moves it to Trash
+     * rather than erasing it. Proton: 501.
+     */
+    suspend fun deleteMessage(sessionId: String, messageId: String)
+
     /** Revoke and drop the session. */
     suspend fun logout(sessionId: String)
 

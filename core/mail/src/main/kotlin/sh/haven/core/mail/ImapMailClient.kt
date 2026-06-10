@@ -154,6 +154,72 @@ class ImapMailClient @Inject constructor() : MailClient {
             }
         }
 
+    override suspend fun setSeen(sessionId: String, messageId: String, seen: Boolean) =
+        withMessageReadWrite(sessionId, messageId, expungeOnClose = false) { _, m ->
+            m.setFlag(Flags.Flag.SEEN, seen)
+        }
+
+    override suspend fun setFlagged(sessionId: String, messageId: String, flagged: Boolean) =
+        withMessageReadWrite(sessionId, messageId, expungeOnClose = false) { _, m ->
+            m.setFlag(Flags.Flag.FLAGGED, flagged)
+        }
+
+    override suspend fun deleteMessage(sessionId: String, messageId: String) =
+        // Mark \Deleted; close(true) expunges it. On Gmail this lands the copy in Trash.
+        withMessageReadWrite(sessionId, messageId, expungeOnClose = true) { _, m ->
+            m.setFlag(Flags.Flag.DELETED, true)
+        }
+
+    override suspend fun moveMessage(sessionId: String, messageId: String, destFolderId: String) {
+        withContext(Dispatchers.IO) {
+            val s = session(sessionId)
+            val (folderId, uid) = decodeId(messageId)
+            val dest = s.store.getFolder(destFolderId)
+            if (!dest.exists()) {
+                throw MailException.ProtocolError(404, "Destination folder not found: $destFolderId")
+            }
+            val src = s.store.getFolder(folderId)
+            src.open(Folder.READ_WRITE)
+            try {
+                val m = (src as UIDFolder).getMessageByUID(uid)
+                    ?: throw MailException.ProtocolError(404, "Message $uid not found in $folderId")
+                // Portable move: server-side COPY to dest, then \Deleted + expunge here.
+                // (A capability-gated MOVE could replace this later; copy+delete works on all IMAP.)
+                src.copyMessages(arrayOf<Message>(m), dest)
+                m.setFlag(Flags.Flag.DELETED, true)
+            } catch (e: MessagingException) {
+                throw MailException.ProtocolError(0, e.message ?: "IMAP move failed")
+            } finally {
+                runCatching { src.close(true) }
+            }
+        }
+    }
+
+    /**
+     * Open the message's folder READ_WRITE, resolve it by UID, run [block], and close
+     * (expunging when [expungeOnClose]). Shared by the flag/delete filter ops.
+     */
+    private suspend fun withMessageReadWrite(
+        sessionId: String,
+        messageId: String,
+        expungeOnClose: Boolean,
+        block: (Folder, Message) -> Unit,
+    ) = withContext(Dispatchers.IO) {
+        val s = session(sessionId)
+        val (folderId, uid) = decodeId(messageId)
+        val folder = s.store.getFolder(folderId)
+        folder.open(Folder.READ_WRITE)
+        try {
+            val m = (folder as UIDFolder).getMessageByUID(uid)
+                ?: throw MailException.ProtocolError(404, "Message $uid not found in $folderId")
+            block(folder, m)
+        } catch (e: MessagingException) {
+            throw MailException.ProtocolError(0, e.message ?: "IMAP update failed")
+        } finally {
+            runCatching { folder.close(expungeOnClose) }
+        }
+    }
+
     override suspend fun send(sessionId: String, mail: OutgoingMail): SendResult =
         withContext(Dispatchers.IO) {
             require(mail.to.isNotEmpty()) { "OutgoingMail.to must not be empty" }
