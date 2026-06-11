@@ -45,6 +45,7 @@ fun FidoTouchPromptDialog(prompt: FidoTouchPrompt) {
     when (prompt) {
         is FidoTouchPrompt.EnterPin -> PinEntryDialog(prompt)
         is FidoTouchPrompt.WaitingForKey,
+        is FidoTouchPrompt.WrongKey,
         is FidoTouchPrompt.TouchKey -> TouchDialog(prompt)
     }
 }
@@ -54,6 +55,8 @@ private fun TouchDialog(prompt: FidoTouchPrompt) {
     val (title, body) = when (prompt) {
         is FidoTouchPrompt.WaitingForKey -> stringResource(R.string.connections_fido_waiting_title) to
             stringResource(R.string.connections_fido_waiting_body)
+        is FidoTouchPrompt.WrongKey -> stringResource(R.string.connections_fido_wrong_title) to
+            stringResource(R.string.connections_fido_wrong_body)
         is FidoTouchPrompt.TouchKey -> when (prompt.transport) {
             FidoTouchPrompt.TouchKey.Transport.USB ->
                 stringResource(R.string.connections_fido_touch_usb_title) to
@@ -83,6 +86,17 @@ private fun TouchDialog(prompt: FidoTouchPrompt) {
                         body,
                         style = MaterialTheme.typography.bodyMedium,
                     )
+                    // Name the specific key the server asked for, so when a
+                    // profile lists several keys the user presents the right
+                    // one rather than guessing (#237).
+                    prompt.keyLabel?.let { label ->
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            stringResource(R.string.connections_fido_key_label, label),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                     Spacer(Modifier.height(8.dp))
                     Text(
                         stringResource(R.string.connections_fido_cancel_hint),

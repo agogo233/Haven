@@ -140,7 +140,7 @@ class SshClient : Closeable {
                 is ConnectionConfig.AuthMethod.FidoKey -> {
                     val skData = SkKeyData.deserialize(auth.skKeyData)
                     Log.d(TAG, "FIDO2 SK key: alg=${skData.algorithmName}")
-                    val fidoIdentity = FidoIdentity(skData, fidoAuthenticator!!)
+                    val fidoIdentity = FidoIdentity(skData, fidoAuthenticator!!, auth.keyLabel)
                     val identity = if (auth.certBytes != null) {
                         val certKeyType = SshCertificateParser.getCertKeyType(skData.algorithmName)
                         CertificateWrappedIdentity(fidoIdentity, auth.certBytes, certKeyType)

@@ -3580,7 +3580,11 @@ class ConnectionsViewModel @Inject constructor(
             if (key.keyType.startsWith("sk-")) {
                 Log.d(TAG, "Using FIDO2 SK key: ${key.keyType}" +
                     if (certBytes != null) " (with certificate)" else "")
-                return ConnectionConfig.AuthMethod.FidoKey(skKeyData = keyBytes, certBytes = certBytes)
+                return ConnectionConfig.AuthMethod.FidoKey(
+                    skKeyData = keyBytes,
+                    certBytes = certBytes,
+                    keyLabel = key.label,
+                )
             }
             // For encrypted keys, pass the original encrypted bytes + passphrase.
             // JSch decrypts at auth time — key never stored in plaintext.

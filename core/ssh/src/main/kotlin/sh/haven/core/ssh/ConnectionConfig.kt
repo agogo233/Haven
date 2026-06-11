@@ -151,6 +151,9 @@ data class ConnectionConfig(
         data class FidoKey(
             val skKeyData: ByteArray,
             val certBytes: ByteArray? = null,
+            /** Profile key name, surfaced in the touch prompt so the user
+             * presents the right key when several are listed (#237). */
+            val keyLabel: String? = null,
         ) : AuthMethod {
             override fun equals(other: Any?): Boolean {
                 if (this === other) return true

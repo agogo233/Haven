@@ -24,6 +24,8 @@ private const val TAG = "FidoIdentity"
 class FidoIdentity(
     private val skKeyData: SkKeyData,
     private val authenticator: FidoAuthenticator,
+    /** Profile key name shown in the touch prompt so the user presents the right key (#237). */
+    private val keyLabel: String? = null,
 ) : Identity {
 
     override fun getAlgName(): String = skKeyData.algorithmName
@@ -73,6 +75,7 @@ class FidoIdentity(
                     message = data,
                     credentialId = skKeyData.credentialId,
                     requireUv = requireUv,
+                    keyLabel = keyLabel,
                 )
             }
         } catch (e: Exception) {

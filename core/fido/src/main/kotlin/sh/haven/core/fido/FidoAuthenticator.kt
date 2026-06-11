@@ -34,6 +34,12 @@ private const val TAG = "FidoAuthenticator"
 private const val ACTION_USB_PERMISSION = "sh.haven.core.fido.USB_PERMISSION"
 private const val USB_PERMISSION_TIMEOUT_MS = 30_000L
 
+/**
+ * How many times a single [FidoAuthenticator.getAssertion] will re-prompt after
+ * a wrong key (NO_CREDENTIALS) before giving up, counting the first try (#237).
+ */
+private const val MAX_MISMATCH_ATTEMPTS = 3
+
 data class FidoAssertionResult(
     val signature: ByteArray,
     val flags: Byte,
@@ -46,8 +52,16 @@ data class FidoAssertionResult(
  * when the flow returns to null.
  */
 sealed class FidoTouchPrompt {
+    /**
+     * Human label of the specific key this assertion targets (the profile's
+     * key name, e.g. "YK-carry-A"), or null when discovering / unknown. Lets
+     * the UI tell the user *which* of several listed keys to present, so a
+     * wrong-key tap is avoidable rather than fatal (#237).
+     */
+    abstract val keyLabel: String?
+
     /** Discovery active — waiting for the user to plug in or tap a key. */
-    data object WaitingForKey : FidoTouchPrompt()
+    data class WaitingForKey(override val keyLabel: String? = null) : FidoTouchPrompt()
 
     /**
      * Key detected; CTAP2 in flight; waiting for the user to physically
@@ -59,9 +73,24 @@ sealed class FidoTouchPrompt {
      * which is exactly the failure mode reported in `#15` for
      * SoloKey-via-NFC users.
      */
-    data class TouchKey(val transport: Transport) : FidoTouchPrompt() {
+    data class TouchKey(
+        val transport: Transport,
+        override val keyLabel: String? = null,
+    ) : FidoTouchPrompt() {
         enum class Transport { USB, NFC }
     }
+
+    /**
+     * The key just presented didn't hold the credential this assertion needs
+     * (CTAP2 no-credentials). We're now waiting for the user to present the
+     * *correct* key ([keyLabel]); [attemptsLeft] retries remain before the
+     * assertion gives up. The wrong key is excluded from re-selection so the
+     * user isn't auto-failed on the same one (#237).
+     */
+    data class WrongKey(
+        override val keyLabel: String? = null,
+        val attemptsLeft: Int = 0,
+    ) : FidoTouchPrompt()
 
     /**
      * Key requires PIN (verify-required SK key). UI should show a password
@@ -72,7 +101,38 @@ sealed class FidoTouchPrompt {
     data class EnterPin(
         val submit: (String?) -> Unit,
         val retriesRemaining: Int? = null,
+        override val keyLabel: String? = null,
     ) : FidoTouchPrompt()
+}
+
+/**
+ * The presented FIDO key doesn't hold the credential the server asked to sign
+ * (CTAP2 `STATUS_NO_CREDENTIALS`). Distinct from a generic [java.io.IOException]
+ * so the assertion loop can re-prompt for the correct key instead of aborting
+ * the whole SSH publickey method (#237).
+ */
+class FidoNoMatchingCredentialException(message: String) : java.io.IOException(message)
+
+/**
+ * Map a CTAP2 GetAssertion response status byte to the exception it should
+ * raise, or null when [status] is STATUS_OK. A wrong key answers
+ * STATUS_NO_CREDENTIALS, which becomes a typed [FidoNoMatchingCredentialException]
+ * so the assertion loop can re-prompt for the correct key instead of aborting
+ * the SSH publickey method (#237); every other non-OK status is a plain
+ * [java.io.IOException]. Top-level + internal so it's unit-testable without a
+ * Context-bound [FidoAuthenticator].
+ */
+internal fun ctap2AssertionErrorForStatus(status: Byte): Exception? = when (status) {
+    Ctap2Cbor.STATUS_OK -> null
+    Ctap2Cbor.STATUS_NO_CREDENTIALS -> FidoNoMatchingCredentialException(
+        "FIDO2 assertion failed: No matching credential on this key " +
+            "(or the credential requires PIN verification — re-check " +
+            "that the PIN was accepted)",
+    )
+    Ctap2Cbor.STATUS_ACTION_TIMEOUT ->
+        java.io.IOException("FIDO2 assertion failed: User did not touch the key in time")
+    else ->
+        java.io.IOException("FIDO2 assertion failed: CTAP2 error 0x${"%02x".format(status)}")
 }
 
 /**
@@ -126,6 +186,14 @@ class FidoAuthenticator @Inject constructor(
     @Volatile var lastAssertionError: String? = null
 
     /**
+     * Label of the key the in-flight assertion targets (#237). Set at the top
+     * of [getAssertion] and read by the touch-prompt construction sites so the
+     * UI can name *which* key to present, without threading it through every
+     * deep CTAP helper signature. Null when discovering (resident-cred enum).
+     */
+    @Volatile private var currentKeyLabel: String? = null
+
+    /**
      * Publish the foreground activity from `Activity.onResume`. Required to
      * enable NFC reader mode during [getAssertion]; USB-only flows work
      * without it.
@@ -168,42 +236,79 @@ class FidoAuthenticator @Inject constructor(
         message: ByteArray,
         credentialId: ByteArray,
         requireUv: Boolean = false,
+        keyLabel: String? = null,
     ): FidoAssertionResult = withContext(Dispatchers.IO) {
         lastAssertionError = null
+        currentKeyLabel = keyLabel
         Log.d(TAG, "FIDO2 assertion requested: rpId=$rpId, message=${message.size}b, " +
-            "credId=${credentialId.size}b, requireUv=$requireUv")
+            "credId=${credentialId.size}b, requireUv=$requireUv, keyLabel=${keyLabel ?: "(none)"}")
 
         val clientDataHash = MessageDigest.getInstance("SHA-256").digest(message)
 
-        withDiscoveredFidoDevice { device ->
-            // Device just landed — for the non-UV path, switch the prompt to
-            // "touch your key now" before sending GetAssertion, with the
-            // transport dictated by which discovery branch fired. The UV
-            // path goes through `performXxxAssertion` which toggles
-            // EnterPin then TouchKey at the right moments.
-            if (!requireUv) {
-                _touchPrompt.value = FidoTouchPrompt.TouchKey(
-                    when (device) {
-                        is ConnectedDevice.Usb -> FidoTouchPrompt.TouchKey.Transport.USB
-                        is ConnectedDevice.Nfc -> FidoTouchPrompt.TouchKey.Transport.NFC
-                    },
-                )
+        // A key that doesn't hold this credential answers NO_CREDENTIALS. Rather
+        // than let that abort the whole SSH publickey method (the user tapped the
+        // wrong one of several listed keys, #237), re-prompt for the correct key
+        // and retry — excluding the already-failed USB key so the user isn't
+        // auto-failed on the same one, and re-arming NFC for a fresh tap. Bounded
+        // so a key that simply never matches still terminates.
+        val failedUsbIds = mutableSetOf<Int>()
+        try {
+            var attempt = 0
+            while (true) {
+                attempt++
+                var thisUsbId: Int? = null
+                try {
+                    return@withContext withDiscoveredFidoDevice(
+                        excludeUsbDeviceIds = failedUsbIds,
+                        wrongKeyAttemptsLeft = if (attempt > 1) MAX_MISMATCH_ATTEMPTS - attempt + 1 else null,
+                    ) { device ->
+                        thisUsbId = (device as? ConnectedDevice.Usb)?.device?.deviceId
+                        // Device just landed — for the non-UV path, switch the
+                        // prompt to "touch your key now", naming the target key
+                        // so the right one is presented. The UV path goes through
+                        // `performXxxAssertion` which toggles EnterPin/TouchKey.
+                        if (!requireUv) {
+                            _touchPrompt.value = FidoTouchPrompt.TouchKey(
+                                when (device) {
+                                    is ConnectedDevice.Usb -> FidoTouchPrompt.TouchKey.Transport.USB
+                                    is ConnectedDevice.Nfc -> FidoTouchPrompt.TouchKey.Transport.NFC
+                                },
+                                currentKeyLabel,
+                            )
+                        }
+
+                        val result = when (device) {
+                            is ConnectedDevice.Usb -> performUsbAssertion(
+                                device.device, rpId, clientDataHash, credentialId, requireUv,
+                            )
+                            is ConnectedDevice.Nfc -> performNfcAssertion(
+                                device.tag, rpId, clientDataHash, credentialId, requireUv,
+                            )
+                        }
+
+                        Log.d(TAG, "FIDO2 assertion success: sig=${result.signature.size}b, flags=0x${
+                            "%02x".format(result.flags)
+                        }, counter=${result.counter}")
+
+                        result
+                    }
+                } catch (e: FidoNoMatchingCredentialException) {
+                    thisUsbId?.let { failedUsbIds += it }
+                    if (attempt >= MAX_MISMATCH_ATTEMPTS) {
+                        lastAssertionError = e.message
+                        Log.w(TAG, "No matching credential after $attempt attempt(s); giving up")
+                        throw e
+                    }
+                    Log.w(TAG, "Wrong key (attempt $attempt/$MAX_MISMATCH_ATTEMPTS) — " +
+                        "re-prompting for ${currentKeyLabel ?: "the correct key"}")
+                    // Loop: withDiscoveredFidoDevice re-arms discovery excluding
+                    // the failed USB key and shows the WrongKey prompt.
+                }
             }
-
-            val result = when (device) {
-                is ConnectedDevice.Usb -> performUsbAssertion(
-                    device.device, rpId, clientDataHash, credentialId, requireUv,
-                )
-                is ConnectedDevice.Nfc -> performNfcAssertion(
-                    device.tag, rpId, clientDataHash, credentialId, requireUv,
-                )
-            }
-
-            Log.d(TAG, "FIDO2 assertion success: sig=${result.signature.size}b, flags=0x${
-                "%02x".format(result.flags)
-            }, counter=${result.counter}")
-
-            result
+            @Suppress("UNREACHABLE_CODE")
+            error("unreachable")
+        } finally {
+            currentKeyLabel = null
         }
     }
 
@@ -212,20 +317,27 @@ class FidoAuthenticator @Inject constructor(
      * Handles the shared discovery / touch-prompt / cleanup lifecycle.
      */
     private suspend fun <R> withDiscoveredFidoDevice(
+        excludeUsbDeviceIds: Set<Int> = emptySet(),
+        wrongKeyAttemptsLeft: Int? = null,
         perform: suspend (ConnectedDevice) -> R,
     ): R {
         val deferred = CompletableDeferred<ConnectedDevice>()
         pendingDevice = deferred
 
-        // ----- USB: check already connected, else register attach receiver
+        // ----- USB: check already connected, else register attach receiver.
+        // Skip a key that already failed with NO_CREDENTIALS this call so a
+        // wrong, still-plugged key isn't re-selected instantly — wait for the
+        // user to present a different key instead (#237).
         val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
-        val alreadyConnectedUsb = usbManager.deviceList.values.firstOrNull { isFidoHidDevice(it) }
+        val alreadyConnectedUsb = usbManager.deviceList.values.firstOrNull {
+            isFidoHidDevice(it) && it.deviceId !in excludeUsbDeviceIds
+        }
         var usbReceiver: BroadcastReceiver? = null
         if (alreadyConnectedUsb != null) {
             Log.d(TAG, "FIDO key already plugged in: ${alreadyConnectedUsb.productName ?: "(unknown product)"}")
             deferred.complete(ConnectedDevice.Usb(alreadyConnectedUsb))
         } else {
-            usbReceiver = registerUsbAttachReceiver(deferred)
+            usbReceiver = registerUsbAttachReceiver(deferred, excludeUsbDeviceIds)
             Log.d(TAG, "Registered USB attach receiver; waiting for key to be plugged in")
         }
 
@@ -239,10 +351,13 @@ class FidoAuthenticator @Inject constructor(
             Log.d(TAG, "No foreground activity — NFC path disabled, USB only")
         }
 
-        _touchPrompt.value = if (deferred.isCompleted) {
-            FidoTouchPrompt.TouchKey(FidoTouchPrompt.TouchKey.Transport.USB)
-        } else {
-            FidoTouchPrompt.WaitingForKey
+        _touchPrompt.value = when {
+            deferred.isCompleted ->
+                FidoTouchPrompt.TouchKey(FidoTouchPrompt.TouchKey.Transport.USB, currentKeyLabel)
+            wrongKeyAttemptsLeft != null ->
+                FidoTouchPrompt.WrongKey(currentKeyLabel, wrongKeyAttemptsLeft)
+            else ->
+                FidoTouchPrompt.WaitingForKey(currentKeyLabel)
         }
 
         try {
@@ -311,6 +426,7 @@ class FidoAuthenticator @Inject constructor(
      */
     private fun registerUsbAttachReceiver(
         deferred: CompletableDeferred<ConnectedDevice>,
+        excludeUsbDeviceIds: Set<Int> = emptySet(),
     ): BroadcastReceiver {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context, intent: Intent) {
@@ -321,7 +437,7 @@ class FidoAuthenticator @Inject constructor(
                     @Suppress("DEPRECATION")
                     intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
                 }
-                if (device != null && isFidoHidDevice(device)) {
+                if (device != null && isFidoHidDevice(device) && device.deviceId !in excludeUsbDeviceIds) {
                     Log.d(TAG, "USB FIDO device attached: ${device.productName ?: "(unknown product)"}")
                     deferred.complete(ConnectedDevice.Usb(device))
                 }
@@ -484,7 +600,7 @@ class FidoAuthenticator @Inject constructor(
                 ) { cmd ->
                     transport.sendCborCommand(cmd) {
                         _touchPrompt.value =
-                            FidoTouchPrompt.TouchKey(FidoTouchPrompt.TouchKey.Transport.USB)
+                            FidoTouchPrompt.TouchKey(FidoTouchPrompt.TouchKey.Transport.USB, currentKeyLabel)
                     }
                 }
             }
@@ -550,7 +666,7 @@ class FidoAuthenticator @Inject constructor(
         }
 
         Log.d(TAG, "Sending GetAssertion (rpId=$rpId, uv=${pinUvAuthParam != null})")
-        _touchPrompt.value = FidoTouchPrompt.TouchKey(touchTransport)
+        _touchPrompt.value = FidoTouchPrompt.TouchKey(touchTransport, currentKeyLabel)
         var response = send(
             Ctap2Cbor.encodeGetAssertionCommand(
                 rpId = rpId,
@@ -568,7 +684,7 @@ class FidoAuthenticator @Inject constructor(
             Log.i(TAG, "GetAssertion returned PIN_REQUIRED (0x36) without UV — " +
                 "authenticator has always-uv enabled; running clientPIN and retrying")
             val (token, proto) = runUvPinProtocol(rpId, Ctap2Cbor.PERMISSION_GET_ASSERTION, send)
-            _touchPrompt.value = FidoTouchPrompt.TouchKey(touchTransport)
+            _touchPrompt.value = FidoTouchPrompt.TouchKey(touchTransport, currentKeyLabel)
             response = send(
                 Ctap2Cbor.encodeGetAssertionCommand(
                     rpId = rpId,
@@ -677,7 +793,7 @@ class FidoAuthenticator @Inject constructor(
 
         // 2. enumerateRPs: Begin (subCmd 2) returns first RP + totalRPs,
         //    then GetNext (subCmd 3) for the rest. No subCommandParams.
-        _touchPrompt.value = FidoTouchPrompt.TouchKey(touchTransport)
+        _touchPrompt.value = FidoTouchPrompt.TouchKey(touchTransport, currentKeyLabel)
         val firstRp = sendCmCommand(
             send, protocol, token,
             subCommand = Ctap2Cbor.CM_SUB_ENUMERATE_RPS_BEGIN,
@@ -938,16 +1054,7 @@ class FidoAuthenticator @Inject constructor(
         require(response.isNotEmpty()) { "Empty CTAP2 response" }
 
         val status = response[0]
-        if (status != Ctap2Cbor.STATUS_OK) {
-            val desc = when (status) {
-                Ctap2Cbor.STATUS_NO_CREDENTIALS ->
-                    "No matching credential on this key (or the credential requires " +
-                        "PIN verification — re-check that the PIN was accepted)"
-                Ctap2Cbor.STATUS_ACTION_TIMEOUT -> "User did not touch the key in time"
-                else -> "CTAP2 error 0x${"%02x".format(status)}"
-            }
-            throw IOException("FIDO2 assertion failed: $desc")
-        }
+        ctap2AssertionErrorForStatus(status)?.let { throw it }
 
         val parsed = Ctap2Cbor.decodeGetAssertionResponse(response.copyOfRange(1, response.size))
 

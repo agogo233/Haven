@@ -45,6 +45,7 @@ internal fun KeysFidoTouchPromptDialog(prompt: FidoTouchPrompt) {
     when (prompt) {
         is FidoTouchPrompt.EnterPin -> PinEntryDialog(prompt)
         is FidoTouchPrompt.WaitingForKey,
+        is FidoTouchPrompt.WrongKey,
         is FidoTouchPrompt.TouchKey -> TouchDialog(prompt)
     }
 }
@@ -52,7 +53,9 @@ internal fun KeysFidoTouchPromptDialog(prompt: FidoTouchPrompt) {
 @Composable
 private fun TouchDialog(prompt: FidoTouchPrompt) {
     val (title, body) = when (prompt) {
-        is FidoTouchPrompt.WaitingForKey ->
+        // WrongKey can't arise during resident-credential discovery (no specific
+        // credential is targeted); fall back to the waiting copy for exhaustiveness.
+        is FidoTouchPrompt.WaitingForKey, is FidoTouchPrompt.WrongKey ->
             stringResource(R.string.keys_fido_waiting_title) to
                 stringResource(R.string.keys_fido_waiting_body)
         is FidoTouchPrompt.TouchKey -> when (prompt.transport) {
