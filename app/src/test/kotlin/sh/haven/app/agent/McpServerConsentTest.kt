@@ -104,6 +104,9 @@ class McpServerConsentTest {
             mcpTunnelManager = mockk(relaxed = true),
             reticulumSessionManager = mockk(relaxed = true),
             reticulumForwardServer = mockk(relaxed = true),
+            mailRuleRepository = mockk(relaxed = true),
+            mailWatchManager = mockk(relaxed = true),
+            agentActivityHolder = mockk(relaxed = true),
         )
         return server to auditRecorder
     }
@@ -480,6 +483,9 @@ class McpServerConsentTest {
             mcpTunnelManager = mockk(relaxed = true),
             reticulumSessionManager = mockk(relaxed = true),
             reticulumForwardServer = mockk(relaxed = true),
+            mailRuleRepository = mockk(relaxed = true),
+            mailWatchManager = mockk(relaxed = true),
+            agentActivityHolder = mockk(relaxed = true),
         )
 
         val responseFuture = java.util.concurrent.CompletableFuture.supplyAsync {

@@ -85,6 +85,9 @@ class McpToolsConsentTest {
             mcpTunnelManager = mockk(relaxed = true),
             reticulumSessionManager = mockk(relaxed = true),
             reticulumForwardServer = mockk(relaxed = true),
+            mailRuleRepository = mockk(relaxed = true),
+            mailWatchManager = mockk(relaxed = true),
+            agentActivityHolder = mockk(relaxed = true),
         )
     }
 

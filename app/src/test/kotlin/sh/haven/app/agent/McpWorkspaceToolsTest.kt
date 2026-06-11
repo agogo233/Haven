@@ -95,6 +95,9 @@ class McpWorkspaceToolsTest {
             mcpTunnelManager = mockk(relaxed = true),
             reticulumSessionManager = mockk(relaxed = true),
             reticulumForwardServer = mockk(relaxed = true),
+            mailRuleRepository = mockk(relaxed = true),
+            mailWatchManager = mockk(relaxed = true),
+            agentActivityHolder = mockk(relaxed = true),
         )
         // All workspace verbs go through tools/call which is gated by
         // the dispatch-time pairing check. Initialize first so the
