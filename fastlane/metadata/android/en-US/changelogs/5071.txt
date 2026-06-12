@@ -1,0 +1,7 @@
+Security keys (YubiKey / FIDO2): you can now register a security key as an SSH key directly on your phone, over USB or NFC — no laptop or ssh-keygen needed. Set a PIN, choose touch-only or PIN-required, and use it like any SSH key.
+
+Per-key controls on the Keys tab: "Require PIN at sign-in" and "Offer for connections" (opt a key out of automatic use). And you can deploy a key to a key-only server using a key the server already trusts.
+
+Fixed: a connection set to require one specific key could silently log in with a different one. Fixed: adding a security key broke "any saved key" auth ("Invalid Key"). Fixed: composite YubiKeys (OTP+FIDO+CCID) are now detected correctly.
+
+Authentication editor: choosing "SSH key" now lets you pick which key right away, and "Use only this key" makes a key the sole method in one tap.
