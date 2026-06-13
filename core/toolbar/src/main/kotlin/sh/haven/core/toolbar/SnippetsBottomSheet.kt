@@ -99,7 +99,15 @@ fun SnippetsBottomSheet(
                     items(filtered) { snippet ->
                         ListItem(
                             headlineContent = {
-                                Text(snippet.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                // bodyMedium (14sp) rather than ListItem's default
+                                // bodyLarge (16sp) — the default looked oversized next
+                                // to the toolbar keys and the row's own send-sequence.
+                                Text(
+                                    snippet.label,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
                             },
                             supportingContent = {
                                 Text(
