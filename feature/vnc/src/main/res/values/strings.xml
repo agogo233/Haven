@@ -23,6 +23,6 @@
     <string name="vnc_cd_gesture_help">Touch gestures</string>
     <string name="vnc_cd_save_default">Save current size as this app\'s default</string>
     <string name="vnc_gesture_help_title">Touch gestures</string>
-    <string name="vnc_gesture_help_two_finger">Pinch with two fingers to zoom and pan.</string>
+    <string name="vnc_gesture_help_two_finger">Drag two fingers to scroll; pinch them to zoom. One finger is the mouse.</string>
     <string name="vnc_gesture_help_three_finger">Pinch with three fingers to resize the app while staying fullscreen.</string>
 </resources>

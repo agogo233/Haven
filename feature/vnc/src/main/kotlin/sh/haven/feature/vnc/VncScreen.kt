@@ -809,57 +809,63 @@ private fun VncViewer(
                                             }
                                         }
                                       } else {
-                                        if (prevSpan > 0f && span > 0f) {
-                                            val requestedScale = span / prevSpan
-                                            // Max 10× (was 5×): small portrait
-                                            // phones need to magnify far enough
-                                            // to read remote-desktop text.
-                                            // Cover-fill floors zoom at 1× (the
-                                            // fill scale) so a pinch-out can't
-                                            // expose black; otherwise 0.5× min.
-                                            val newZoom = (zoom * requestedScale)
+                                        // Two-finger gesture. Distinguish a pinch
+                                        // (fingers' span changing) from a drag
+                                        // (fingers translating together): a pinch
+                                        // zooms; a same-span vertical drag scrolls
+                                        // the remote when not zoomed (so 2-finger
+                                        // scroll coexists with pinch-zoom and the
+                                        // single finger stays normal mouse). When
+                                        // zoomed in, a 2-finger drag pans instead.
+                                        val dx = centroid.x - prevCentroid.x
+                                        val dy = centroid.y - prevCentroid.y
+                                        val spanDelta = if (prevSpan > 0f) abs(span - prevSpan) else 0f
+                                        val moveDelta = abs(dx) + abs(dy)
+                                        val pinching = spanDelta > 2f && spanDelta >= moveDelta
+                                        if (pinching && prevSpan > 0f && span > 0f) {
+                                            // Pinch-zoom about the centroid. Cover-fill
+                                            // floors zoom at 1× (so a pinch-out can't
+                                            // expose black); otherwise 0.5× min, 10× max.
+                                            val newZoom = (zoom * (span / prevSpan))
                                                 .coerceIn(if (coverFill) 1f else 0.5f, 10f)
-                                            // Keep the content point under the pinch
-                                            // centroid stationary during the zoom.
-                                            // graphicsLayer's default TransformOrigin
-                                            // is the view center, so the pivot is
-                                            // (cx, cy), not (0, 0).
-                                            //   pan' = (centroid - center)(1 - r) + pan * r
-                                            // where r is the *actual* applied scale
-                                            // (may be less than the finger-requested
-                                            // scale if we hit the min/max zoom clamp).
+                                            // Keep the content point under the centroid
+                                            // stationary (pivot is the view centre):
+                                            //   pan' = (centroid - centre)(1 - r) + pan*r
                                             val actualScale = if (zoom > 0f) newZoom / zoom else 1f
                                             val cx = viewSize.width / 2f
                                             val cy = viewSize.height / 2f
                                             panX = (centroid.x - cx) * (1 - actualScale) + panX * actualScale
                                             panY = (centroid.y - cy) * (1 - actualScale) + panY * actualScale
                                             zoom = newZoom
-                                        }
-                                        val dx = centroid.x - prevCentroid.x
-                                        val dy = centroid.y - prevCentroid.y
-                                        panX += dx
-                                        panY += dy
-                                        // Clamp pan so a corner of the (scaled)
-                                        // content can't be dragged inside the
-                                        // viewport, leaving empty space. The
-                                        // base content is the frame fit-inside
-                                        // viewSize; scaled by zoom about centre,
-                                        // its half-overflow past each edge is
-                                        // the max pan. App-window mode only —
-                                        // the desktop viewer keeps free pan +
-                                        // its touchpad mario-camera behaviour.
-                                        if (twoFingerZoom && viewSize.width > 0 && viewSize.height > 0) {
-                                            val fit = if (coverFill) maxOf(
-                                                viewSize.width.toFloat() / frame.width,
-                                                viewSize.height.toFloat() / frame.height,
-                                            ) else minOf(
-                                                viewSize.width.toFloat() / frame.width,
-                                                viewSize.height.toFloat() / frame.height,
-                                            )
-                                            val maxPanX = maxOf(0f, (frame.width * fit * zoom - viewSize.width) / 2f)
-                                            val maxPanY = maxOf(0f, (frame.height * fit * zoom - viewSize.height) / 2f)
-                                            panX = panX.coerceIn(-maxPanX, maxPanX)
-                                            panY = panY.coerceIn(-maxPanY, maxPanY)
+                                        } else if (twoFingerZoom && zoom <= 1.01f) {
+                                            // App window, not zoomed: 2-finger vertical
+                                            // drag = remote wheel-scroll (content follows
+                                            // the fingers). Single finger is untouched.
+                                            cumulativeScrollY += dy
+                                            if (abs(cumulativeScrollY) > 40f) {
+                                                if (cumulativeScrollY < 0) onScrollDown() else onScrollUp()
+                                                cumulativeScrollY = 0f
+                                            }
+                                        } else {
+                                            // Zoomed in (or desktop ≥3-finger): pan the
+                                            // magnified view, clamped so a corner of the
+                                            // scaled content can't be dragged inside the
+                                            // viewport leaving empty space (app windows).
+                                            panX += dx
+                                            panY += dy
+                                            if (twoFingerZoom && viewSize.width > 0 && viewSize.height > 0) {
+                                                val fit = if (coverFill) maxOf(
+                                                    viewSize.width.toFloat() / frame.width,
+                                                    viewSize.height.toFloat() / frame.height,
+                                                ) else minOf(
+                                                    viewSize.width.toFloat() / frame.width,
+                                                    viewSize.height.toFloat() / frame.height,
+                                                )
+                                                val maxPanX = maxOf(0f, (frame.width * fit * zoom - viewSize.width) / 2f)
+                                                val maxPanY = maxOf(0f, (frame.height * fit * zoom - viewSize.height) / 2f)
+                                                panX = panX.coerceIn(-maxPanX, maxPanX)
+                                                panY = panY.coerceIn(-maxPanY, maxPanY)
+                                            }
                                         }
                                       }
                                     } else {
