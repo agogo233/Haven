@@ -23,6 +23,13 @@ class DesktopManagerResolutionTest {
     }
 
     @Test
+    fun `auto matches a corner-safe portrait area (short edges inset)`() {
+        // 1344x2992 with ~60px top/bottom corner inset → safe 1344x2872.
+        // long = round(720*2872/1344)=1539 → even 1540.
+        assertEquals(720 to 1540, computeAutoResolution(1344, 2872, 720, 1600))
+    }
+
+    @Test
     fun `auto rounds both dimensions up to even`() {
         val (w, h) = computeAutoResolution(1000, 1777, 720, 4000)
         assertEquals(0, w % 2)

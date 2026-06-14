@@ -45,6 +45,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -60,6 +61,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -134,6 +137,17 @@ internal class PresentationHostViewModel @Inject constructor(
                     )
                 }
             }
+        }
+    }
+
+    /**
+     * Re-mode a running app window's cage to [w]x[h] so it refits the current
+     * screen (fullscreen-enter / rotation). Transient — the saved def stays
+     * "auto" and recomputes the fit each time.
+     */
+    fun changeAppWindowResolution(sessionId: String, w: Int, h: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            desktopManager.setAppWindowResolution(sessionId, w, h)
         }
     }
 
@@ -280,6 +294,10 @@ internal fun PresentationHost(viewModel: PresentationHostViewModel = hiltViewMod
                             currentScale = current.scale,
                             onChangeScale = { s ->
                                 current.sessionId?.let { viewModel.changeAppWindowScale(it, s) }
+                            },
+                            autoFit = current.resolution == "auto",
+                            onFitToScreen = { w, h ->
+                                current.sessionId?.let { viewModel.changeAppWindowResolution(it, w, h) }
                             },
                         )
                     } else {
@@ -612,6 +630,9 @@ private fun AppWindowContent(
     onPictureInPicture: () -> Unit,
     currentScale: Float,
     onChangeScale: (Float) -> Unit,
+    /** App resolution is "auto" → refit the cage to the screen on enter/rotation. */
+    autoFit: Boolean,
+    onFitToScreen: (Int, Int) -> Unit,
 ) {
     if (fullscreen) {
         Dialog(
@@ -622,17 +643,56 @@ private fun AppWindowContent(
                 dismissOnBackPress = true,
             ),
         ) {
-            // Hide the dialog window's system bars for a true immersive view.
             val dialogView = LocalView.current
+            val density = LocalDensity.current
+            val config = LocalConfiguration.current
+            // Display rounded-corner radius (px); 0 on flat screens.
+            var cornerPx by remember { mutableIntStateOf(0) }
             LaunchedEffect(dialogView) {
+                // Hide the dialog window's system bars for a true immersive view.
                 val w = (dialogView.parent as? DialogWindowProvider)?.window ?: return@LaunchedEffect
                 WindowCompat.getInsetsController(w, dialogView).apply {
                     hide(WindowInsetsCompat.Type.systemBars())
                     systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                 }
+                if (android.os.Build.VERSION.SDK_INT >= 31) {
+                    val ins = w.decorView.rootWindowInsets
+                    cornerPx = ins?.let {
+                        intArrayOf(
+                            android.view.RoundedCorner.POSITION_TOP_LEFT,
+                            android.view.RoundedCorner.POSITION_TOP_RIGHT,
+                            android.view.RoundedCorner.POSITION_BOTTOM_LEFT,
+                            android.view.RoundedCorner.POSITION_BOTTOM_RIGHT,
+                        ).maxOf { p -> it.getRoundedCorner(p)?.radius ?: 0 }
+                    } ?: 0
+                }
+            }
+            val portrait = config.screenHeightDp >= config.screenWidthDp
+            val cornerDp = with(density) { cornerPx.toDp() }
+            // Auto: re-mode the cage to fit the corner-safe area (inset on the
+            // SHORT edges) on fullscreen-enter and on every rotation. The
+            // framebuffer then matches the inset box aspect → exact fill, no crop.
+            if (autoFit) {
+                val screenWpx = Math.round(config.screenWidthDp * density.density)
+                val screenHpx = Math.round(config.screenHeightDp * density.density)
+                LaunchedEffect(portrait, screenWpx, screenHpx, cornerPx) {
+                    val safeW = if (portrait) screenWpx else (screenWpx - 2 * cornerPx).coerceAtLeast(1)
+                    val safeH = if (portrait) (screenHpx - 2 * cornerPx).coerceAtLeast(1) else screenHpx
+                    onFitToScreen(safeW, safeH)
+                }
+            }
+            // Inset the SHORT edges (auto) so the cage clears the rounded corners
+            // while filling the long dimension; fixed-resolution windows get a
+            // uniform inset fallback (they aren't re-moded to fit).
+            val insetMod = when {
+                !autoFit -> Modifier.padding(cornerDp)
+                portrait -> Modifier.padding(vertical = cornerDp)
+                else -> Modifier.padding(horizontal = cornerDp)
             }
             Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-                AppWindowVnc(controller, true, onFullscreenChange, onDismiss, onMinimize, onPictureInPicture, currentScale, onChangeScale)
+                Box(modifier = Modifier.fillMaxSize().then(insetMod)) {
+                    AppWindowVnc(controller, true, onFullscreenChange, onDismiss, onMinimize, onPictureInPicture, currentScale, onChangeScale)
+                }
             }
         }
         // The opaque dialog covers this; a stable-height placeholder keeps the

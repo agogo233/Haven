@@ -941,6 +941,28 @@ class DesktopManager @Inject constructor(
     }
 
     /**
+     * Refit a running app window to a screen area of [screenW]x[screenH] (the
+     * device's current usable/safe area) by re-moding its sway output to the
+     * aspect-matched [computeAutoResolution] — used on fullscreen-enter and on
+     * rotation. wayvnc resizes its framebuffer and the VNC client adapts
+     * (verified). No-op if unknown. Socket found the connect-test way as
+     * [setAppWindowScale].
+     */
+    suspend fun setAppWindowResolution(sessionId: String, screenW: Int, screenH: Int) {
+        val session = _appWindows.value[sessionId] ?: return
+        val (w, h) = computeAutoResolution(screenW, screenH)
+        val xdg = "/tmp/xdg-runtime-${session.displayNumber}"
+        val cmd = buildString {
+            append("export XDG_RUNTIME_DIR=$xdg; ")
+            append("for k in $xdg/sway-ipc.*.sock; do ")
+            append("swaymsg -s \"\$k\" -t get_version >/dev/null 2>&1 && { ")
+            append("swaymsg -s \"\$k\" output HEADLESS-1 mode ${w}x${h}@60Hz >/dev/null 2>&1; break; }; ")
+            append("done")
+        }
+        prootManager.runCommandInProot(cmd)
+    }
+
+    /**
      * Kill exactly the cage-kiosk process tree for one app window, identified
      * by its per-session XDG_RUNTIME_DIR (/tmp/xdg-runtime-[display]). cage,
      * the kiosk app, and wayvnc are all exec'd with that env var exported, so
