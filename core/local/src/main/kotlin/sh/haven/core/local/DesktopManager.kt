@@ -648,6 +648,25 @@ class DesktopManager @Inject constructor(
         // background the env exports as well — so wayvnc would later run
         // with no XDG_RUNTIME_DIR. The semicolons keep each statement in
         // the foreground; only the compositor itself is backgrounded.
+        // GPU broker: point the cage app's Mesa at Haven's virgl_test_server
+        // (a surfaceless EGL/GLES2 context on the Android GPU, forked into
+        // Haven's own process where libEGL reaches Mali). Idempotent — the JNI
+        // tracks a single global server, so this shares the one already used by
+        // the native compositor. Gated on the .so being present (only arm64
+        // ships it); on x86_64 it skips and the cage stays on llvmpipe. The
+        // compositor itself stays on pixman; only the app's GL is accelerated.
+        val virglBin = File(
+            context.applicationInfo.nativeLibraryDir, "libvirgl_test_server.so",
+        )
+        val virglEnv = if (virglBin.canExecute()) {
+            WaylandBridge.nativeStartVirglServer(
+                virglBin.absolutePath, File(context.cacheDir, ".virgl_test").absolutePath,
+            )
+            "export GALLIUM_DRIVER=virpipe ; export VTEST_SOCKET=/tmp/.virgl_test ; "
+        } else {
+            ""
+        }
+
         val shellCmd = buildString {
             append("set -e ; ")
             // The compositor proot runs as uid 1000 (`-i 1000:1000`, so
@@ -674,6 +693,10 @@ class DesktopManager @Inject constructor(
             // software renderer exposes plain SHM buffers (ARGB8888 /
             // XRGB8888) that wayvnc can capture without GPU help.
             append("export WLR_RENDERER=pixman ; ")
+            // App-level GPU accel for cage GL apps (see virglEnv above). Empty
+            // string when the virgl server isn't available, so the cage falls
+            // back to the unchanged llvmpipe software path.
+            append(virglEnv)
             // Some wlroots versions also honour WLR_NO_HARDWARE_CURSORS
             // and refuse to start without it when running headless on
             // a system that lacks DRM nodes.
