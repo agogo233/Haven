@@ -220,6 +220,14 @@ class SshSessionManager @Inject constructor(
      */
     private val reconnectProxyProviders = ConcurrentHashMap<String, suspend () -> HavenProxy?>()
 
+    /**
+     * Per-session hooks run once after a successful reconnect (status back to
+     * CONNECTED, forwards re-applied). Used by the USB/IP forwarder to re-run the
+     * host-side `usbip attach` — the device node on the host vanishes when the
+     * tunnel drops, and re-binding the `-R` alone doesn't restore it.
+     */
+    private val reconnectHooks = ConcurrentHashMap<String, suspend () -> Unit>()
+
     private class LeaseRecord(
         val leaseId: String,
         val sessionId: String,
@@ -297,6 +305,16 @@ class SshSessionManager @Inject constructor(
     fun setReconnectProxyProvider(sessionId: String, provider: (suspend () -> HavenProxy?)?) {
         if (provider == null) reconnectProxyProviders.remove(sessionId)
         else reconnectProxyProviders[sessionId] = provider
+    }
+
+    /**
+     * Register (or clear, with null) a hook run once after each successful
+     * reconnect of [sessionId], after forwards are re-applied. Cleared
+     * automatically in [removeSession]. See [reconnectHooks].
+     */
+    fun setOnReconnected(sessionId: String, hook: (suspend () -> Unit)?) {
+        if (hook == null) reconnectHooks.remove(sessionId)
+        else reconnectHooks[sessionId] = hook
     }
 
     fun updateStatus(sessionId: String, status: SessionState.Status) {
@@ -848,6 +866,9 @@ class SshSessionManager @Inject constructor(
                 }
 
                 updateStatus(sessionId, SessionState.Status.CONNECTED)
+                // Post-reconnect hooks (e.g. USB/IP host re-attach). Best-effort —
+                // a failing hook must never abort a successful reconnect.
+                reconnectHooks[sessionId]?.let { hook -> runCatching { runBlocking { hook() } } }
                 Log.d(TAG, "Reconnected $sessionId on attempt $attempt")
                 return
             } catch (e: Exception) {
@@ -870,6 +891,7 @@ class SshSessionManager @Inject constructor(
         _sessions.update { it - sessionId }
         agentScrollback.remove(sessionId)
         reconnectProxyProviders.remove(sessionId)
+        reconnectHooks.remove(sessionId)
         // Fire any tunnel leases riding on this session so their dependents
         // (VNC/RDP tabs) tear themselves down. Single-shot per lease; runs on
         // the caller thread (the consumer re-dispatches to its own scope).

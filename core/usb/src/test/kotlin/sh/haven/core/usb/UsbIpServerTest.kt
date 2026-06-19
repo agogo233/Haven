@@ -14,10 +14,13 @@ class UsbIpServerTest {
     private class FakeBackend(
         private val inData: ByteArray = ByteArray(0),
         private val fail: Boolean = false,
+        @Volatile var alive: Boolean = true,
     ) : UsbIpBackend {
         var lastControl: IntArray? = null
         var lastBulkEndpoint: Int? = null
         var lastOut: ByteArray? = null
+
+        override fun isAlive(): Boolean = alive
 
         override fun control(requestType: Int, request: Int, value: Int, index: Int, out: ByteArray, length: Int, timeoutMs: Int): ByteArray {
             if (fail) throw java.io.IOException("boom")
@@ -99,6 +102,16 @@ class UsbIpServerTest {
         val (status, actualLength) = replyStatusAndLength(reply!!)
         assertEquals(0, status)
         assertEquals(2, actualLength)
+    }
+
+    @Test
+    fun `pollIn stops without polling once the device is gone`() {
+        // A standing interrupt-IN poll on an idle connection must bail when the
+        // device is unplugged / re-enumerated, not spin on failing transfers.
+        val backend = FakeBackend(inData = byteArrayOf(1), alive = false)
+        val reply = UsbIpServer.pollIn(submit(7, UsbIpProtocol.DIR_IN, ep = 4, transferBufferLength = 64), backend, emptySet(), 10)
+        assertNull(reply)
+        assertNull(backend.lastBulkEndpoint) // never touched the dead device
     }
 
     @Test

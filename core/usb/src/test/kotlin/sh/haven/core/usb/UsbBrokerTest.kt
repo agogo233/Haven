@@ -1,13 +1,19 @@
 package sh.haven.core.usb
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
 import android.hardware.usb.UsbConstants
 import android.hardware.usb.UsbDevice
+import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbEndpoint
 import android.hardware.usb.UsbInterface
 import android.hardware.usb.UsbManager
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
+import io.mockk.verify
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -58,6 +64,8 @@ class UsbBrokerTest {
     private fun broker(usbManager: UsbManager): UsbBroker {
         val context: Context = mockk {
             every { getSystemService(Context.USB_SERVICE) } returns usbManager
+            every { registerReceiver(any(), any()) } returns null
+            every { registerReceiver(any(), any(), any<Int>()) } returns null
         }
         return UsbBroker(context)
     }
@@ -108,6 +116,38 @@ class UsbBrokerTest {
         assertNull(info.manufacturerName)
         assertNull(info.productName)
         assertNull(info.serialNumber)
+    }
+
+    @Test
+    fun `a USB detach broadcast evicts the open handle`() = runBlocking {
+        val dev = device("/dev/bus/usb/001/006", 0x1, 0x2, emptyList())
+        val conn = mockk<UsbDeviceConnection>(relaxed = true)
+        val usb: UsbManager = mockk {
+            every { deviceList } returns hashMapOf(dev.deviceName to dev)
+            every { hasPermission(dev) } returns true
+            every { openDevice(dev) } returns conn
+        }
+        val recvSlot = slot<BroadcastReceiver>()
+        val context: Context = mockk {
+            every { getSystemService(Context.USB_SERVICE) } returns usb
+            every { registerReceiver(capture(recvSlot), any()) } returns null
+            every { registerReceiver(any(), any(), any<Int>()) } returns null
+        }
+        val broker = UsbBroker(context)
+
+        broker.openDevice(dev.deviceName)
+        assertTrue(broker.isOpen(dev.deviceName))
+
+        // Fire the detach broadcast the receiver registered for (SDK_INT defaults
+        // to 0 in unit tests → the deprecated getParcelableExtra path).
+        val intent: Intent = mockk {
+            every { action } returns UsbManager.ACTION_USB_DEVICE_DETACHED
+            every { getParcelableExtra<UsbDevice>(UsbManager.EXTRA_DEVICE) } returns dev
+        }
+        recvSlot.captured.onReceive(context, intent)
+
+        assertFalse(broker.isOpen(dev.deviceName))
+        verify { conn.close() }
     }
 
     @Test

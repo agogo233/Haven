@@ -48,6 +48,14 @@ class UsbIpServer @Inject constructor(
     val isRunning: Boolean get() = serverSocket != null
     val boundPort: Int? get() = serverSocket?.localPort
 
+    /** The exported device's `/dev/bus/usb/...` name, or null when stopped. */
+    val exportedDeviceName: String? get() = deviceName
+
+    private val clients = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /** Remote usbip clients currently connected (>0 ⇒ a host has attached). */
+    val clientCount: Int get() = clients.get()
+
     /**
      * Bind the usbip server for [deviceName] (already opened via
      * [UsbBroker.openDevice]). [bindAddress] null binds all interfaces (LAN +
@@ -85,6 +93,15 @@ class UsbIpServer @Inject constructor(
     }
 
     private fun serve(client: Socket, device: String) {
+        clients.incrementAndGet()
+        try {
+            serveConnection(client, device)
+        } finally {
+            clients.decrementAndGet()
+        }
+    }
+
+    private fun serveConnection(client: Socket, device: String) {
         // One single-thread lane per (endpoint, direction): in-order within a lane,
         // concurrent across lanes. Keyed by ep<<1|direction (DIR_IN=1, DIR_OUT=0).
         val lanes = java.util.concurrent.ConcurrentHashMap<Int, java.util.concurrent.ExecutorService>()
@@ -120,6 +137,12 @@ class UsbIpServer @Inject constructor(
             // Phase 2: URB stream.
             val backend = BrokerBackend(broker, device)
             while (true) {
+                // Device unplugged / re-enumerated (e.g. esptool resetting an ESP32-S3):
+                // stop rather than spin replying EPIPE on a dead handle. Exiting the
+                // client.use block closes the socket and drains the lanes below.
+                if (!broker.isOpen(device)) {
+                    Log.i(TAG, "device $device no longer open — ending export connection"); break
+                }
                 val urb = try {
                     UsbIpProtocol.readUrb(input)
                 } catch (e: Exception) {
@@ -244,7 +267,10 @@ class UsbIpServer @Inject constructor(
          */
         fun pollIn(urb: UsbIpProtocol.Urb.Submit, backend: UsbIpBackend, cancelled: Set<Int>, pollMs: Int): ByteArray? {
             val address = urb.ep or 0x80
-            while (urb.seqnum !in cancelled && !Thread.currentThread().isInterrupted) {
+            // backend.isAlive() guard: a standing interrupt-IN poll on an idle
+            // connection must exit when the device is unplugged, not spin on
+            // failing transfers until the client happens to send another URB.
+            while (urb.seqnum !in cancelled && !Thread.currentThread().isInterrupted && backend.isAlive()) {
                 val data = try {
                     backend.bulk(address, urb.out, urb.transferBufferLength, pollMs)
                 } catch (e: Exception) {
@@ -328,6 +354,9 @@ interface UsbIpBackend {
 
     /** Bulk/interrupt on the full endpoint address; returns IN data (empty for OUT). Throws on failure. */
     fun bulk(endpointAddress: Int, out: ByteArray, length: Int, timeoutMs: Int): ByteArray
+
+    /** False once the device handle is gone (unplug / re-enumeration), so standing polls bail. */
+    fun isAlive(): Boolean
 }
 
 /** [UsbIpBackend] backed by the Android [UsbBroker]. */
@@ -337,4 +366,6 @@ class BrokerBackend(private val broker: UsbBroker, private val deviceName: Strin
 
     override fun bulk(endpointAddress: Int, out: ByteArray, length: Int, timeoutMs: Int): ByteArray =
         broker.bulkTransfer(deviceName, endpointAddress, out, length, timeoutMs).data
+
+    override fun isAlive(): Boolean = broker.isOpen(deviceName)
 }

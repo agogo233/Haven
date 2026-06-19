@@ -39,6 +39,9 @@ class UsbProxyServer @Inject constructor(
     /** The abstract socket name a guest connects to. */
     val socketName: String get() = SOCKET_NAME
 
+    /** The device currently proxied to the guest (`/dev/bus/usb/...`), or null when stopped. */
+    val proxyDeviceName: String? get() = deviceName
+
     /**
      * Bind the proxy for [deviceName] (which must already be opened via
      * [UsbBroker.openDevice]). Idempotent for the same device; rebinds for a

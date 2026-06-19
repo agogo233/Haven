@@ -3250,8 +3250,8 @@ class ConnectionsViewModel @Inject constructor(
             val profile = repository.getById(profileId) ?: return@launch
             val vidPid = profile.usbForwardVidPid
             if (vidPid.isNullOrBlank() || !profile.isSsh) return@launch
-            val client = sshSessionManager.getSession(sessionId)?.client ?: return@launch
-            usbipForwarder.attach(client, vidPid) { msg ->
+            if (sshSessionManager.getSession(sessionId) == null) return@launch
+            usbipForwarder.attach(sessionId, vidPid) { msg ->
                 userMessageBus.emit(
                     sh.haven.core.data.message.UserMessage(msg, sh.haven.core.data.message.UserMessage.Severity.INFO),
                 )
@@ -3948,7 +3948,7 @@ class ConnectionsViewModel @Inject constructor(
         sshSessionManager.getSessionsForProfile(profileId).forEach { session ->
             usbForwardHandles.remove(session.sessionId)?.let { handle ->
                 viewModelScope.launch(Dispatchers.IO) {
-                    usbipForwarder.teardown(session.client, handle) { msg ->
+                    usbipForwarder.teardown(session.sessionId, handle) { msg ->
                         userMessageBus.emit(
                             sh.haven.core.data.message.UserMessage(msg, sh.haven.core.data.message.UserMessage.Severity.INFO),
                         )

@@ -17,6 +17,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -52,10 +53,43 @@ class UsbBroker @Inject constructor(
     private data class OpenHandle(
         val device: UsbDevice,
         val connection: UsbDeviceConnection,
-        val claimedInterfaces: MutableSet<Int> = mutableSetOf(),
+        // Concurrent: per-endpoint export lanes may claim the same interface
+        // (e.g. a CDC data interface with both bulk endpoints) concurrently.
+        val claimedInterfaces: MutableSet<Int> = ConcurrentHashMap.newKeySet(),
     )
 
-    private val open = HashMap<String, OpenHandle>()
+    // Concurrent: the detach receiver (main thread) closes handles while export
+    // lanes read/transfer on other threads.
+    private val open = ConcurrentHashMap<String, OpenHandle>()
+
+    init {
+        // A physical unplug — or an ESP32-S3 re-enumerating when esptool resets it —
+        // silently invalidates an open connection. Without this, the export server
+        // keeps issuing transfers on a dead handle and the handle leaks until the
+        // next openDevice. Mirror FidoAuthenticator's USB receiver registration.
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context, intent: Intent) {
+                if (intent.action != UsbManager.ACTION_USB_DEVICE_DETACHED) return
+                val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+                } else {
+                    @Suppress("DEPRECATION") intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
+                }
+                val name = device?.deviceName ?: return
+                if (open.containsKey(name)) {
+                    Log.d(TAG, "USB device $name detached — closing handle")
+                    closeDevice(name)
+                }
+            }
+        }
+        val filter = IntentFilter(UsbManager.ACTION_USB_DEVICE_DETACHED)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("UnspecifiedRegisterReceiverFlag")
+            context.registerReceiver(receiver, filter)
+        }
+    }
 
     // ---- Enumeration ------------------------------------------------------
 
@@ -206,6 +240,9 @@ class UsbBroker @Inject constructor(
     fun closeAll() {
         open.keys.toList().forEach { closeDevice(it) }
     }
+
+    /** Whether a handle is currently open for [deviceName] (export servers poll this to stop on device loss). */
+    fun isOpen(deviceName: String): Boolean = open.containsKey(deviceName)
 
     private fun handleFor(deviceName: String): OpenHandle =
         open[deviceName] ?: throw IOException("USB device '$deviceName' not open — call openDevice first")
